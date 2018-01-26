@@ -70,6 +70,7 @@ namespace {
             ));
             for (Function::iterator B = F.begin(), BE = F.end(); B != BE; ++B) {
                 // Here B is a pointer to a basic block
+//                errs() <<B->getName() << '\n';
 
                 std::map<int , int > defaultDict;
 
