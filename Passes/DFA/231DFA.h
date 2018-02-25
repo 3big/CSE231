@@ -10,7 +10,7 @@
 // This file provides the interface for the passes of CSE 231 projects
 //
 //===----------------------------------------------------------------------===//
-
+//#define NDEBUG
 #ifndef LLVM_TRANSFORMS_231DFA_H
 #define LLVM_TRANSFORMS_231DFA_H
 
@@ -24,6 +24,7 @@
 #include <map>
 #include <utility>
 #include <vector>
+#include <stack>
 
 namespace llvm {
 
@@ -60,14 +61,16 @@ class Info {
      * Direction:
      *   In your subclass you need to implement this function.
      */
-    static Info* join(Info * info1, Info * info2, Info * result);
+    static void join(Info * info1, Info * info2, Info * result);
 };
 
 /*
  * This is the base template class to represent the generic dataflow analysis framework
  * For a specific analysis, you need to create a sublcass of it.
  */
-template <class Info, bool Direction>
+
+    // (info) is the initial state of the ANALYSIS ; if forward 1stAnal = 1stProg
+template <class InfoT, bool Direction>
 class DataFlowAnalysis {
 
   private:
@@ -77,11 +80,11 @@ class DataFlowAnalysis {
 		// Instruction to index map
 		std::map<Instruction *, unsigned> InstrToIndex;
 		// Edge to information map
-		std::map<Edge, Info *> EdgeToInfo;
+		std::map<Edge, InfoT *> EdgeToInfo;
 		// The bottom of the lattice
-    Info Bottom;
+    InfoT Bottom;
     // The initial state of the analysis
-		Info InitialState;
+		InfoT InitialState;
 		// EntryInstr points to the first instruction to be processed in the analysis
 		Instruction * EntryInstr;
 
@@ -153,7 +156,7 @@ class DataFlowAnalysis {
 		 *   Insert an edge to EdgeToInfo.
 		 *   The default initial value for each edge is bottom.
 		 */
-		void addEdge(Instruction * src, Instruction * dst, Info * content) {
+		void addEdge(Instruction * src, Instruction * dst, InfoT * content) {
 			Edge edge = std::make_pair(InstrToIndex[src], InstrToIndex[dst]);
 			if (EdgeToInfo.count(edge) == 0)
 				EdgeToInfo[edge] = content;
@@ -224,7 +227,7 @@ class DataFlowAnalysis {
      * The flow function.
      *   Instruction I: the IR instruction to be processed.
      *   std::vector<unsigned> & IncomingEdges: the vector of the indices of the source instructions of the incoming edges.
-     *   std::vector<unsigned> & IncomingEdges: the vector of indices of the source instructions of the outgoing edges.
+     *   std::vector<unsigned> & OutgoingEdges: the vector of indices of the source instructions of the outgoing edges.
      *   std::vector<Info *> & Infos: the vector of the newly computed information for each outgoing eages.
      *
      * Direction:
@@ -233,13 +236,33 @@ class DataFlowAnalysis {
     virtual void flowfunction(Instruction * I,
     													std::vector<unsigned> & IncomingEdges,
 															std::vector<unsigned> & OutgoingEdges,
-															std::vector<Info *> & Infos) = 0;
+															std::vector<InfoT *> & Infos) = 0;
 
   public:
-    DataFlowAnalysis(Info & bottom, Info & initialState) :
+    DataFlowAnalysis(InfoT & bottom, InfoT & initialState) :
     								 Bottom(bottom), InitialState(initialState),EntryInstr(nullptr) {}
 
     virtual ~DataFlowAnalysis() {}
+
+    const std::map<unsigned int, Instruction *> &getIndexToInstr() const {
+      return IndexToInstr;
+    }
+
+    const std::map<Instruction *, unsigned int> &getInstrToIndex() const {
+      return InstrToIndex;
+    }
+
+    const std::map<Edge, InfoT *> &getEdgeToInfo() const {
+      return EdgeToInfo;
+    }
+
+    InfoT getBottom() const {
+      return Bottom;
+    }
+
+
+//    EdgeToInfo, IndexToInstr, InstrToIndex, Bottom
+
 
     /*
      * Print out the analysis results.
@@ -265,11 +288,18 @@ class DataFlowAnalysis {
      *   Implement the rest of the function.
      *   You may not change anything before "// (2) Initialize the worklist".
      */
-    void runWorklistAlgorithm(Function * func) {
-    	std::deque<unsigned> worklist;
 
-    	// (1) Initialize info of each edge to bottom
-    	if (Direction)
+//    info_in is a vector of information of corresponding edges.
+
+
+        void runWorklistAlgorithm(Function * func) {
+
+          std::deque<unsigned> worklist;
+//          errs() << "wl";
+
+
+					// (1) Initialize info of each edge to bottom
+    	if (Direction)//ALWAYS true for part 2
     		initializeForwardMap(func);
     	else
     		initializeBackwardMap(func);
@@ -277,8 +307,113 @@ class DataFlowAnalysis {
     	assert(EntryInstr != nullptr && "Entry instruction is null.");
 
     	// (2) Initialize the work list
+        unsigned int instr_index;
+//					auto instr = InstrToIndex.begin();
+
+					std::map<unsigned, bool > children_added;
+					std::map<unsigned, bool > visited;
+					std::stack<unsigned> nodes;
+
+      for(auto instr = IndexToInstr.begin(), instr_last = IndexToInstr.end(); instr != instr_last; ++instr){
+        //Worklist contains instrs in order of appearance (i.e. program order)
+				instr_index = instr->first;
+//        errs()<<instr_index << " : " <<instr->second << "\n";
+
+        children_added[instr_index] = false;
+				visited[instr_index] = false;
+      }
+					/*Reverse Post-Order DFS*/
+					unsigned int curr_instr;
+					nodes.push(IndexToInstr.begin()->first);
+					visited[nodes.top()] = true;
+					while(!nodes.empty()){
+						curr_instr = nodes.top();
+//            errs()<< "Stack Instr: " <<curr_instr << "\n";
+
+
+            if (!children_added[curr_instr]){
+							//Add children;
+              std::vector<unsigned> outgoing_edges;
+              getOutgoingEdges(curr_instr, &outgoing_edges);
+//              errs() << "outgoing edges # " << outgoing_edges.size() <<"\n\n";
+              for (unsigned int i = 0; i < outgoing_edges.size(); ++i) {
+//                errs() << "Outgoing edge "<<i<<": " << outgoing_edges[i] <<"\n";
+              }
+							//iterate over children in reverse so we get DFS
+							for(auto outgoing_instr = outgoing_edges.rbegin(); outgoing_instr != outgoing_edges.rend(); ++outgoing_instr) {
+								if (!visited[*outgoing_instr]){
+									visited[*outgoing_instr] = true;
+									nodes.push(*outgoing_instr);
+//                  errs() << *outgoing_instr << "|";
+								}
+							}
+							children_added[curr_instr] = true;
+							/* either child will be on top or node will still be on top,
+							 * but children have been added*/
+
+						} else{//add to worklist and remove
+//              errs() <<curr_instr << " added to WL\n";
+							worklist.push_front(curr_instr);//add it in reverse order
+							nodes.pop();
+						}
+					}
+//        for (auto it = worklist.begin(); it != worklist.end(); it++ ){
+//         errs() << "instr" << *it << "\n";
+//
+//        }
+
 
     	// (3) Compute until the work list is empty
+					while (!worklist.empty()){
+						curr_instr = worklist.front();
+//            errs() << "instr" << curr_instr << "\n";
+
+            worklist.pop_front();
+            if (curr_instr == 0 ){
+              continue;
+            }
+            std::vector<unsigned> outgoing_edges;
+            std::vector<unsigned> incoming_edges;
+						//info_in
+						getIncomingEdges(curr_instr, &incoming_edges);
+						//info_out_OLD
+						getOutgoingEdges(curr_instr, &outgoing_edges);
+						//info_out
+//
+//            errs() << "Instruction #: "<< curr_instr <<"\n";
+            std::vector<InfoT*> info_out;
+
+            flowfunction(IndexToInstr[curr_instr], incoming_edges, outgoing_edges, info_out);
+//            errs() << "outgoing edges # " << outgoing_edges.size() <<"\n\n";
+//            for (unsigned int i = 0; i < outgoing_edges.size(); ++i) {
+//              errs() << "Outgoing edge "<<i<<": " << outgoing_edges[i] <<"\n";
+//            }
+            for (unsigned int i = 0; i < outgoing_edges.size(); ++i) {
+
+
+              Edge edge = Edge(curr_instr, outgoing_edges[i]); // curr_instr -> next_instr[i]
+							InfoT * old_info = EdgeToInfo[edge];
+              InfoT * new_info = info_out[i];
+              assert(old_info != nullptr);
+              assert(new_info != nullptr);
+//              errs() << "pr old info" <<"\n";
+//              old_info->print();
+//              errs() << "pr new info" <<"\n";
+//              new_info->print();
+
+
+
+              if(!InfoT::equals(old_info, new_info)){
+                //update to new info, put back on worklist
+                EdgeToInfo[edge] = new_info;
+                worklist.push_front(outgoing_edges[i]);
+							}else{
+                delete (new_info);
+              }//else don't need to replace anything, leave alone
+						}
+//
+
+					}
     }
 };
 
