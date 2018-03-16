@@ -217,17 +217,7 @@ do not return a value (the second categories above).
     * Direction:
     * 	 Implement this function in subclasses.
     */
-//    void flowfunction1(Instruction *I,
-//                      std::vector<unsigned> &IncomingEdges,
-//                      std::vector<unsigned> &OutgoingEdges,
-//                      std::vector<ReachingInfo *> &Infos) {
-//
-//      //set new outgoing infos; each outgoing edge has the same info
-//      for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
-//        ReachingInfo * reaching_info = new ReachingInfo();
-//        Infos.push_back(reaching_info);
-//      }
-//    }
+
       virtual void flowfunction(Instruction *I,
                       std::vector<unsigned> &IncomingEdges,
                       std::vector<unsigned> &OutgoingEdges,
@@ -235,15 +225,14 @@ do not return a value (the second categories above).
       if (I == nullptr)
         return;
 
-//      errs() << "here0";
 
       auto InstrToIndex = getInstrToIndex();
       auto EdgeToInfo = getEdgeToInfo();
       unsigned int instr_index = InstrToIndex[I];
       unsigned int instr_opcode = I->getOpcode();
 
-//      errs() << "here1";
 //the first step of any flow function should be joining the incoming data flows.
+
       //join incoming edges
       auto *incoming_reaching_info = new ReachingInfo();
 
@@ -253,13 +242,9 @@ do not return a value (the second categories above).
         ReachingInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
       }
 
-
-//          errs() << "here2" << "\n\n";
       auto *locally_computed_reaching_info = new ReachingInfo();
 //          errs()<<"Instruction " <<instr_opcode << ":\t"<<I->getOpcodeName() << "\n";
 //          errs() << "Incoming Edges #: "<<IncomingEdges.size() << "\n";
-
-//          errs() << instr_opcode << "\n\n";
 
           if (instr_opcode == 53) {
         // 3 (phi)
@@ -301,13 +286,12 @@ do not return a value (the second categories above).
         reaching_info->reaching_defs = incoming_reaching_info->reaching_defs;
 //        incoming_reaching_info->print();
         Infos.push_back(reaching_info);
-//        Infos[i]->reaching_defs = incoming_reaching_info->reaching_defs;
       }
 
 //      errs() << "assigned infos"<<"\n";
 //          errs() << "info out size: "<< Infos.size() <<"\n";
 
-          delete locally_computed_reaching_info;//dealloc
+      delete locally_computed_reaching_info;//dealloc
       delete incoming_reaching_info;
 
     }

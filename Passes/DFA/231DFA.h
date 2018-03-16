@@ -336,9 +336,10 @@ class DataFlowAnalysis {
               std::vector<unsigned> outgoing_edges;
               getOutgoingEdges(curr_instr, &outgoing_edges);
 //              errs() << "outgoing edges # " << outgoing_edges.size() <<"\n\n";
-              for (unsigned int i = 0; i < outgoing_edges.size(); ++i) {
+//              for (unsigned int i = 0; i < outgoing_edges.size(); ++i) {
 //                errs() << "Outgoing edge "<<i<<": " << outgoing_edges[i] <<"\n";
-              }
+//              }
+
 							//iterate over children in reverse so we get DFS
 							for(auto outgoing_instr = outgoing_edges.rbegin(); outgoing_instr != outgoing_edges.rend(); ++outgoing_instr) {
 								if (!visited[*outgoing_instr]){
@@ -348,8 +349,10 @@ class DataFlowAnalysis {
 								}
 							}
 							children_added[curr_instr] = true;
-							/* either child will be on top or node will still be on top,
-							 * but children have been added*/
+							/*
+							 * either child will be on top or node will still be on top,
+							 * but children have been added
+							 * */
 
 						} else{//add to worklist and remove
 //              errs() <<curr_instr << " added to WL\n";
@@ -357,6 +360,7 @@ class DataFlowAnalysis {
 							nodes.pop();
 						}
 					}
+
 //        for (auto it = worklist.begin(); it != worklist.end(); it++ ){
 //         errs() << "instr" << *it << "\n";
 //
@@ -407,12 +411,10 @@ class DataFlowAnalysis {
                 //update to new info, put back on worklist
                 EdgeToInfo[edge] = new_info;
                 worklist.push_front(outgoing_edges[i]);
-							}else{
+							}else{//else don't need to replace anything, leave alone
                 delete (new_info);
-              }//else don't need to replace anything, leave alone
+              }
 						}
-//
-
 					}
     }
 };
