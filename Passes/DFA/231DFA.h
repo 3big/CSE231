@@ -221,6 +221,58 @@ class DataFlowAnalysis {
 		 */
 		void initializeBackwardMap(Function * func) {
 
+			/*TODO: make this backwards*/
+			assignIndiceToInstrs(func);
+
+			//iterate in reverse
+			for (Function::iterator bi = func->rbegin(), e = func->rend(); bi != e; ++bi) {
+				BasicBlock * block = &*bi;
+
+				Instruction * firstInstr = &(block->back());
+
+				// Initialize outgoing edges of the basic block, reversed
+				Instruction * term = (Instruction *)block->getTerminator();
+				for (auto si = succ_begin(block), se = succ_end(block); si != se; ++si) {
+					BasicBlock * succ = *si;
+					Instruction * next = &(succ->front());
+					addEdge( next, term, &Bottom);
+				}
+
+
+
+				// If there is at least one phi node, add an edge from the first phi node
+				// to the first non-phi node instruction in the basic block.
+				if (isa<PHINode>(firstInstr)) {
+					addEdge(firstInstr, block->getFirstNonPHI(), &Bottom);
+				}
+
+				// Initialize edges within the basic block
+				for (auto ii = block->rbegin(), ie = block->rend(); ii != ie; ++ii) {
+					Instruction * instr = &*ii;
+					if (isa<PHINode>(instr))
+						continue;
+					if (instr == (Instruction *)block->getTerminator())
+						break;
+					Instruction * next = instr->getNextNode();
+					addEdge(instr, next, &Bottom);
+				}
+
+				// Initialize incoming edges to the basic block, reversed
+				for (auto pi = pred_begin(block), pe = pred_end(block); pi != pe; ++pi) {
+					BasicBlock * prev = *pi;
+					Instruction * src = (Instruction *)prev->getTerminator();
+					Instruction * dst = firstInstr;
+					addEdge(dst, src, &Bottom);
+				}
+
+
+			}
+
+			EntryInstr = (Instruction *) &((func->front()).front());
+			addEdge(nullptr, EntryInstr, &InitialState);
+
+			return;
+
 		}
 
     /*
