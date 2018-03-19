@@ -228,7 +228,7 @@ class DataFlowAnalysis {
 			for (Function::iterator bi = func->rbegin(), e = func->rend(); bi != e; ++bi) {
 				BasicBlock * block = &*bi;
 
-				Instruction * firstInstr = &(block->back());
+				Instruction * lastInstr = &(block->back());
 
 				// Initialize outgoing edges of the basic block, reversed
 				Instruction * term = (Instruction *)block->getTerminator();
@@ -242,8 +242,8 @@ class DataFlowAnalysis {
 
 				// If there is at least one phi node, add an edge from the first phi node
 				// to the first non-phi node instruction in the basic block.
-				if (isa<PHINode>(firstInstr)) {
-					addEdge(firstInstr, block->getFirstNonPHI(), &Bottom);
+				if (isa<PHINode>(lastInstr)) {
+					addEdge(lastInstr, block->getFirstNonPHI(), &Bottom);
 				}
 
 				// Initialize edges within the basic block
@@ -261,7 +261,7 @@ class DataFlowAnalysis {
 				for (auto pi = pred_begin(block), pe = pred_end(block); pi != pe; ++pi) {
 					BasicBlock * prev = *pi;
 					Instruction * src = (Instruction *)prev->getTerminator();
-					Instruction * dst = firstInstr;
+					Instruction * dst = lastInstr;
 					addEdge(dst, src, &Bottom);
 				}
 
