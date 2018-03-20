@@ -228,47 +228,52 @@ class DataFlowAnalysis {
 			for (Function::iterator bi = func->rbegin(), e = func->rend(); bi != e; ++bi) {
 				BasicBlock * block = &*bi;
 
-				Instruction * lastInstr = &(block->back());
+				Instruction * firstInstr = &(block->front());
 
-				// Initialize outgoing edges of the basic block, reversed
-				Instruction * term = (Instruction *)block->getTerminator();
-				for (auto si = succ_begin(block), se = succ_end(block); si != se; ++si) {
-					BasicBlock * succ = *si;
-					Instruction * next = &(succ->front());
-					addEdge( next, term, &Bottom);
+				// Initialize incoming edges to the basic block, reversed
+				for (auto pi = pred_begin(block), pe = pred_end(block); pi != pe; ++pi) {
+					BasicBlock * prev = *pi;
+					Instruction * src = (Instruction *)prev->getTerminator();
+					Instruction * dst = firstInstr;
+					//1st instr -> src
+					addEdge(firstInstr, src, &Bottom);
 				}
 
 
 
-				// If there is at least one phi node, add an edge from the first phi node
+
+				// If there is at least one phi node, add a reverse edge from the first phi node
 				// to the first non-phi node instruction in the basic block.
-				if (isa<PHINode>(lastInstr)) {
-					addEdge(lastInstr, block->getFirstNonPHI(), &Bottom);
+				if (isa<PHINode>(firstInstr)) {
+					//%res -> phi1
+					addEdge( block->getFirstNonPHI(),firstInstr, &Bottom);
 				}
 
 				// Initialize edges within the basic block
-				for (auto ii = block->rbegin(), ie = block->rend(); ii != ie; ++ii) {
+				for (auto ii = block->begin(), ie = block->end(); ii != ie; ++ii) {
 					Instruction * instr = &*ii;
 					if (isa<PHINode>(instr))
 						continue;
 					if (instr == (Instruction *)block->getTerminator())
 						break;
 					Instruction * next = instr->getNextNode();
-					addEdge(instr, next, &Bottom);
+					//add next -> instr
+					addEdge(next, instr, &Bottom);
 				}
 
-				// Initialize incoming edges to the basic block, reversed
-				for (auto pi = pred_begin(block), pe = pred_end(block); pi != pe; ++pi) {
-					BasicBlock * prev = *pi;
-					Instruction * src = (Instruction *)prev->getTerminator();
-					Instruction * dst = lastInstr;
-					addEdge(dst, src, &Bottom);
-				}
 
+				// Initialize outgoing edges of the basic block, reversed
+				Instruction * term = (Instruction *)block->getTerminator();
+				for (auto si = succ_begin(block), se = succ_end(block); si != se; ++si) {
+					BasicBlock * succ = *si;
+					Instruction * next = &(succ->front());
+					//next -> term
+					addEdge( next, term, &Bottom);
+				}
 
 			}
 
-			EntryInstr = (Instruction *) &((func->front()).front());
+			EntryInstr = (Instruction *) &((func->back()).back());
 			addEdge(nullptr, EntryInstr, &InitialState);
 
 			return;

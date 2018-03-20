@@ -11,15 +11,15 @@
 namespace llvm{
 
 
-class ReachingInfo : public Info {
+class MayPointToInfo : public Info {
 public:
-    ReachingInfo() = default;
+    MayPointToInfo() = default;
 
-    ReachingInfo(const ReachingInfo &other) = default;
+    MayPointToInfo(const MayPointToInfo &other) = default;
 
-    ~ReachingInfo() = default;
+    ~MayPointToInfo() = default;
 
-    std::set<unsigned> reaching_defs ={};
+    std::set<unsigned> liveness_defs ={};
 
     /*
      * Print out the information
@@ -32,7 +32,7 @@ public:
 
 
 //          [def 1]|[def 2]| ... [def K]|\n
-      for (auto def: reaching_defs) {
+      for (auto def: liveness_defs) {
         errs() << def << "|";
       }
       errs() << "\n";
@@ -44,10 +44,10 @@ public:
      * Direction:
      *   In your subclass you need to implement this function.
      */
-    static bool equals(ReachingInfo *info1, ReachingInfo *info2) {
+    static bool equals(MayPointToInfo *info1, MayPointToInfo *info2) {
 //      errs() << "rd equals" <<"\n\n";
 
-      bool is_equal = info1->reaching_defs == info2->reaching_defs;
+      bool is_equal = info1->liveness_defs == info2->liveness_defs;
 //      errs() << is_equal <<"\n\n";
 
 
@@ -61,13 +61,13 @@ public:
      * Direction:
      *   In your subclass you need to implement this function.
      */
-    static void join(ReachingInfo *info1, ReachingInfo *info2, ReachingInfo *result) {
+    static void join(MayPointToInfo *info1, MayPointToInfo *info2, MayPointToInfo *result) {
       //union; since they are sets, just insert everything.
-      ReachingInfo *info_in[2] = {info1, info2};
+      MayPointToInfo *info_in[2] = {info1, info2};
       for (auto curr_info : info_in) {
         if (!equals(curr_info, result)) {//since we sometimes join result with something else and put it back in result
-          for (unsigned reaching_def : curr_info->reaching_defs) {
-            result->reaching_defs.insert(reaching_def);
+          for (unsigned reaching_def : curr_info->liveness_defs) {
+            result->liveness_defs.insert(reaching_def);
           }
         }
       }
@@ -76,13 +76,13 @@ public:
     }
 };
 
-class ReachingDefinitionAnalysis : public DataFlowAnalysis<ReachingInfo, true> {
+class MayPointToAnalysis : public DataFlowAnalysis<MayPointToInfo, true> {
 private:
     typedef std::pair<unsigned, unsigned> Edge;
 
 public:
-    ReachingDefinitionAnalysis(ReachingInfo &bottom, ReachingInfo &initialState) :
-            DataFlowAnalysis<ReachingInfo, true>::DataFlowAnalysis(bottom, initialState) {}
+    MayPointToAnalysis(MayPointToInfo &bottom, MayPointToInfo &initialState) :
+            DataFlowAnalysis<MayPointToInfo, true>::DataFlowAnalysis(bottom, initialState) {}
 
 
 
@@ -221,7 +221,7 @@ do not return a value (the second categories above).
       virtual void flowfunction(Instruction *I,
                       std::vector<unsigned> &IncomingEdges,
                       std::vector<unsigned> &OutgoingEdges,
-                      std::vector<ReachingInfo *> &Infos) {
+                      std::vector<MayPointToInfo *> &Infos) {
       if (I == nullptr)
         return;
 
@@ -234,15 +234,15 @@ do not return a value (the second categories above).
 //the first step of any flow function should be joining the incoming data flows.
 
       //join incoming edges
-      auto *incoming_reaching_info = new ReachingInfo();
+      auto *incoming_reaching_info = new MayPointToInfo();
 
       for (auto incoming_edge :IncomingEdges) {
         Edge edge = Edge(incoming_edge, instr_index);
-        ReachingInfo *curr_info = EdgeToInfo[edge];
-        ReachingInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
+        MayPointToInfo *curr_info = EdgeToInfo[edge];
+        MayPointToInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
       }
 
-      auto *locally_computed_reaching_info = new ReachingInfo();
+      auto *locally_computed_reaching_info = new MayPointToInfo();
 //          errs()<<"Instruction " <<instr_opcode << ":\t"<<I->getOpcodeName() << "\n";
 //          errs() << "Incoming Edges #: "<<IncomingEdges.size() << "\n";
 
@@ -255,10 +255,10 @@ do not return a value (the second categories above).
           //store phi block in a temp reaching info
 //          errs() << "Phi Node: " <<InstrToIndex[curr_instruction] <<"\n";
 
-          locally_computed_reaching_info->reaching_defs.insert(InstrToIndex[curr_instruction]);
+          locally_computed_reaching_info->liveness_defs.insert(InstrToIndex[curr_instruction]);
           curr_instruction = curr_instruction->getNextNode();//should do it?
         }
-//            errs() << "Phi Nodes #: " << locally_computed_reaching_info->reaching_defs.size() <<"\n";
+//            errs() << "Phi Nodes #: " << locally_computed_reaching_info->liveness_defs.size() <<"\n";
 
 
       } else if ((11 <= instr_opcode && instr_opcode <= 30) //{bin}, {bitwise}, alloc, load
@@ -268,7 +268,7 @@ do not return a value (the second categories above).
               ) {
         // 1 (returns result)
 //        errs() << "Return Result" <<"\n";
-        locally_computed_reaching_info->reaching_defs.insert(instr_index);//single instruction
+        locally_computed_reaching_info->liveness_defs.insert(instr_index);//single instruction
       } else {
 //        errs() << "NO Result" << "\n";
 
@@ -277,13 +277,13 @@ do not return a value (the second categories above).
       }
 
       //final reaching info
-      ReachingInfo::join(locally_computed_reaching_info, incoming_reaching_info, incoming_reaching_info);
+      MayPointToInfo::join(locally_computed_reaching_info, incoming_reaching_info, incoming_reaching_info);
 //      errs() << "assigning new infos" <<"\n";
 
       //set new outgoing infos; each outgoing edge has the same info
       for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
-        ReachingInfo * reaching_info = new ReachingInfo();
-        reaching_info->reaching_defs = incoming_reaching_info->reaching_defs;
+        MayPointToInfo * reaching_info = new MayPointToInfo();
+        reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
 //        incoming_reaching_info->print();
         Infos.push_back(reaching_info);
       }
@@ -300,15 +300,15 @@ do not return a value (the second categories above).
 
 
 namespace {
-    struct ReachingDefinitionAnalysisPass : public FunctionPass {
+    struct MayPointToAnalysisPass : public FunctionPass {
         static char ID;
 
-        ReachingDefinitionAnalysisPass() : FunctionPass(ID) {}
+        MayPointToAnalysisPass() : FunctionPass(ID) {}
 
         bool runOnFunction(Function &F) override {
-          ReachingInfo bottom;
-          ReachingInfo initial_state;
-          ReachingDefinitionAnalysis  analysis (bottom, initial_state);//
+          MayPointToInfo bottom;
+          MayPointToInfo initial_state;
+          MayPointToAnalysis  analysis (bottom, initial_state);//
           analysis.runWorklistAlgorithm(&F);
           analysis.print();
           return false;
@@ -316,8 +316,8 @@ namespace {
     }; // end of struct TestPass
 }  // end of anonymous namespace
 
-char ReachingDefinitionAnalysisPass::ID = 0;
-static RegisterPass<ReachingDefinitionAnalysisPass> X("cse231-reaching", "Developed to determine reaching definitions",
+char MayPointToAnalysisPass::ID = 0;
+static RegisterPass<MayPointToAnalysisPass> X("cse231-reaching", "Developed to determine reaching definitions",
                                                       false /* Only looks at CFG */,
                                                       false /* Analysis Pass */);
 
