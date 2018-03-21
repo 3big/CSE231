@@ -257,19 +257,16 @@ namespace llvm{
                 //local copy of in[0] U... ... U in[k]
                 locally_computed_liveness_info->liveness_defs = incoming_reaching_info->liveness_defs;
 
-//        errs() << "Phi Node" <<"\n";
 
 
                 //-{result_i | i in [1..x]}
                 Instruction *curr_instruction = I;
                 while (curr_instruction != nullptr && curr_instruction->getOpcode() == 53) {
-//          errs() << "Phi Node: " <<InstrToIndex[curr_instruction] <<"\n";
 
                     //-result_i
                     locally_computed_liveness_info->liveness_defs.erase(InstrToIndex[curr_instruction]);
                     curr_instruction = curr_instruction->getNextNode();
                 }
-//            errs() << "Phi Nodes #: " << locally_computed_liveness_info->mayPointTo_defs.size() <<"\n";
 
 
                 //iterate again
@@ -303,14 +300,14 @@ namespace llvm{
                         Instruction *out_instr = IndexToInstr[out_instr_index];
 
                         //label_ij
-                        for (Instruction *op = (Instruction *)curr_instruction->operands().begin(), *end = (Instruction *)curr_instruction->operands().end(); op !=end; ++op){
+                        for (auto op = curr_instruction->operands().begin(), end = curr_instruction->operands().end(); op !=end; ++op){
 
-                            const bool defined_var = InstrToIndex.find(op) !=InstrToIndex.end();
-                            const bool same_building_block = out_instr->getParent() == op->getParent();
+                            const bool defined_var = InstrToIndex.find((Instruction *)op) !=InstrToIndex.end();
+                            const bool same_building_block = out_instr->getParent() == ((Instruction *)op)->getParent();
 
                             //U {ValuetoInstr_v_ij) | label k == label_ij}
                             if (defined_var && same_building_block){
-                                liveness_info->liveness_defs.insert(InstrToIndex[op]);
+                                liveness_info->liveness_defs.insert(InstrToIndex[(Instruction *)op]);
                             }
 
                         }//end for
@@ -352,10 +349,10 @@ namespace llvm{
 //        errs() << "Return Result" <<"\n";
 
                 //U operands
-                for (Instruction *op = (Instruction *)I->operands().begin(), *end = (Instruction *)I->operands().end(); op !=end; ++op){
-                    const bool defined_var = InstrToIndex.find(op) !=InstrToIndex.end();
+                for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
+                    const bool defined_var = InstrToIndex.find((Instruction *)op) !=InstrToIndex.end();
                     if (defined_var){
-                        locally_computed_liveness_info->liveness_defs.insert(InstrToIndex[op]);
+                        locally_computed_liveness_info->liveness_defs.insert(InstrToIndex[ (Instruction *)op]);
                     }
                 }
                 //-{index}
@@ -384,10 +381,10 @@ namespace llvm{
 //        errs() << "NO Result" << "\n";
 
                 //U operands
-                for (Instruction *op = (Instruction *)I->operands().begin(), *end = (Instruction *)I->operands().end(); op !=end; ++op){
-                    const bool defined_var = InstrToIndex.find(op) !=InstrToIndex.end();
+                for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
+                    const bool defined_var = InstrToIndex.find((Instruction *)op) !=InstrToIndex.end();
                     if (defined_var){
-                        locally_computed_liveness_info->liveness_defs.insert(InstrToIndex[op]);
+                        locally_computed_liveness_info->liveness_defs.insert(InstrToIndex[(Instruction *)op]);
                     }
                 }
 
