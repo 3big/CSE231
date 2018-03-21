@@ -11,13 +11,13 @@
 namespace llvm{
 
 
-class LivenessInfo : public Info {
+class ReachingInfo : public Info {
 public:
-    LivenessInfo() = default;
+    ReachingInfo() = default;
 
-    LivenessInfo(const LivenessInfo &other) = default;
+    ReachingInfo(const ReachingInfo &other) = default;
 
-    ~LivenessInfo() = default;
+    ~ReachingInfo() = default;
 
     std::set<unsigned> liveness_defs ={};
 
@@ -44,7 +44,7 @@ public:
      * Direction:
      *   In your subclass you need to implement this function.
      */
-    static bool equals(LivenessInfo *info1, LivenessInfo *info2) {
+    static bool equals(ReachingInfo *info1, ReachingInfo *info2) {
 //      errs() << "rd equals" <<"\n\n";
 
       bool is_equal = info1->liveness_defs == info2->liveness_defs;
@@ -61,9 +61,9 @@ public:
      * Direction:
      *   In your subclass you need to implement this function.
      */
-    static void join(LivenessInfo *info1, LivenessInfo *info2, LivenessInfo *result) {
+    static void join(ReachingInfo *info1, ReachingInfo *info2, ReachingInfo *result) {
       //union; since they are sets, just insert everything.
-      LivenessInfo *info_in[2] = {info1, info2};
+      ReachingInfo *info_in[2] = {info1, info2};
       for (auto curr_info : info_in) {
         if (!equals(curr_info, result)) {//since we sometimes join result with something else and put it back in result
           for (unsigned reaching_def : curr_info->liveness_defs) {
@@ -76,13 +76,13 @@ public:
     }
 };
 
-class MayPointToAnalysis : public DataFlowAnalysis<LivenessInfo, true> {
+class ReachingDefinitionAnalysis : public DataFlowAnalysis<ReachingInfo, true> {
 private:
     typedef std::pair<unsigned, unsigned> Edge;
 
 public:
-    MayPointToAnalysis(LivenessInfo &bottom, LivenessInfo &initialState) :
-            DataFlowAnalysis<LivenessInfo, true>::DataFlowAnalysis(bottom, initialState) {}
+    ReachingDefinitionAnalysis(ReachingInfo &bottom, ReachingInfo &initialState) :
+            DataFlowAnalysis<ReachingInfo, true>::DataFlowAnalysis(bottom, initialState) {}
 
 
 
@@ -221,7 +221,7 @@ do not return a value (the second categories above).
       virtual void flowfunction(Instruction *I,
                       std::vector<unsigned> &IncomingEdges,
                       std::vector<unsigned> &OutgoingEdges,
-                      std::vector<LivenessInfo *> &Infos) {
+                      std::vector<ReachingInfo *> &Infos) {
       if (I == nullptr)
         return;
 
@@ -234,15 +234,15 @@ do not return a value (the second categories above).
 //the first step of any flow function should be joining the incoming data flows.
 
       //join incoming edges
-      auto *incoming_reaching_info = new LivenessInfo();
+      auto *incoming_reaching_info = new ReachingInfo();
 
       for (auto incoming_edge :IncomingEdges) {
         Edge edge = Edge(incoming_edge, instr_index);
-        LivenessInfo *curr_info = EdgeToInfo[edge];
-        LivenessInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
+        ReachingInfo *curr_info = EdgeToInfo[edge];
+        ReachingInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
       }
 
-      auto *locally_computed_reaching_info = new LivenessInfo();
+      auto *locally_computed_reaching_info = new ReachingInfo();
 //          errs()<<"Instruction " <<instr_opcode << ":\t"<<I->getOpcodeName() << "\n";
 //          errs() << "Incoming Edges #: "<<IncomingEdges.size() << "\n";
 
@@ -258,7 +258,7 @@ do not return a value (the second categories above).
           locally_computed_reaching_info->liveness_defs.insert(InstrToIndex[curr_instruction]);
           curr_instruction = curr_instruction->getNextNode();//should do it?
         }
-//            errs() << "Phi Nodes #: " << locally_computed_reaching_info->mayPointTo_defs.size() <<"\n";
+//            errs() << "Phi Nodes #: " << locally_computed_reaching_info->ReachingDefinition_defs.size() <<"\n";
 
 
       } else if ((11 <= instr_opcode && instr_opcode <= 30) //{bin}, {bitwise}, alloc, load
@@ -277,12 +277,12 @@ do not return a value (the second categories above).
       }
 
       //final reaching info
-      LivenessInfo::join(locally_computed_reaching_info, incoming_reaching_info, incoming_reaching_info);
+      ReachingInfo::join(locally_computed_reaching_info, incoming_reaching_info, incoming_reaching_info);
 //      errs() << "assigning new infos" <<"\n";
 
       //set new outgoing infos; each outgoing edge has the same info
       for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
-        LivenessInfo * reaching_info = new LivenessInfo();
+        ReachingInfo * reaching_info = new ReachingInfo();
         reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
 //        incoming_reaching_info->print();
         Infos.push_back(reaching_info);
@@ -300,15 +300,15 @@ do not return a value (the second categories above).
 
 
 namespace {
-    struct MayPointToAnalysisPass : public FunctionPass {
+    struct ReachingDefinitionAnalysisPass : public FunctionPass {
         static char ID;
 
-        MayPointToAnalysisPass() : FunctionPass(ID) {}
+        ReachingDefinitionAnalysisPass() : FunctionPass(ID) {}
 
         bool runOnFunction(Function &F) override {
-          LivenessInfo bottom;
-          LivenessInfo initial_state;
-          MayPointToAnalysis  analysis (bottom, initial_state);//
+          ReachingInfo bottom;
+          ReachingInfo initial_state;
+          ReachingDefinitionAnalysis  analysis (bottom, initial_state);//
           analysis.runWorklistAlgorithm(&F);
           analysis.print();
           return false;
@@ -316,8 +316,8 @@ namespace {
     }; // end of struct TestPass
 }  // end of anonymous namespace
 
-char MayPointToAnalysisPass::ID = 0;
-static RegisterPass<MayPointToAnalysisPass> X("cse231-reaching", "Developed to determine reaching definitions",
+char ReachingDefinitionAnalysisPass::ID = 0;
+static RegisterPass<ReachingDefinitionAnalysisPass> X("cse231-reaching", "Developed to determine reaching definitions",
                                                       false /* Only looks at CFG */,
                                                       false /* Analysis Pass */);
 

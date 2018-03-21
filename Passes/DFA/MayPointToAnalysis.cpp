@@ -51,7 +51,7 @@ where [src] is the index of the instruction that is the start of the edge,
                     if (pointeeID == pointerID){//alloca
                         pointee_prefix = 'M';
                     }
-                    errs() << pointee_prefix << pointeeID << "[slash]";
+                    errs() << pointee_prefix << pointeeID << "/";
                 }
                 errs() << ")|";
 
@@ -126,7 +126,7 @@ where [src] is the index of the instruction that is the start of the edge,
 
         }
     };
-    bool isForwardDirection = true;
+    const bool isForwardDirection = true;
     class MayPointToAnalysis : public DataFlowAnalysis<MayPointToInfo, isForwardDirection> {
     private:
         typedef std::pair<unsigned, unsigned> Edge;
@@ -313,7 +313,7 @@ where [src] is the index of the instruction that is the start of the edge,
                 //bitcast... to
             else if (instr_opcode == 47) {
 
-                Instruction *value = I->getOperand(0);
+                Instruction *value = (Instruction *)I->getOperand(0);
                 const bool defined_var = InstrToIndex.find(value) != InstrToIndex.end();
 
                 if (defined_var){
@@ -334,7 +334,8 @@ where [src] is the index of the instruction that is the start of the edge,
                 //getelementptr
             else if (instr_opcode == 32) {
 
-                Instruction *ptrval = I->getPointerOperand();
+                Instruction *ptrval = (Instruction *) ((GetElementPtrInst*)I)->getPointerOperand();
+
                 const bool defined_var = InstrToIndex.find(ptrval) != InstrToIndex.end();
 
                 if (defined_var){
@@ -354,7 +355,7 @@ where [src] is the index of the instruction that is the start of the edge,
 
                 //load
             else if (instr_opcode == 30) {
-                Instruction *pointer = I->getPointerOperand();
+                Instruction *pointer = (Instruction *)((LoadInst *)I)->getPointerOperand();
                 const bool defined_var = InstrToIndex.find(pointer) != InstrToIndex.end();
 
                 if (defined_var){
@@ -363,16 +364,35 @@ where [src] is the index of the instruction that is the start of the edge,
                     const bool RP_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(pointer_index) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
                     if (RP_in_incomingInfo){
                         std::set<unsigned> X = incoming_mayPointTo_info->mayPointTo_defs[pointer_index];
+                        std::set<unsigned> Y;
                         for (auto x : X){
                             //X -> Y E in
                             bool X_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(x) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
+
                             if (X_in_incomingInfo){
-                                std::set<unsigned> Y = incoming_mayPointTo_info->mayPointTo_defs[x];
+//                                errs() << x << "\n";
+
+                                std::set<unsigned> y_x = incoming_mayPointTo_info->mayPointTo_defs[x];
+                                for (auto y: y_x){
+//                                errs() << y << "\n";
+                                    if (x != y){//not an alloca result
+                                        Y.insert(y_x.begin(), y_x.end());
+                                    }
+                                }
+                               }
+                        }
+                        for (auto x : X){
+                            //X -> Y E in
+                            bool X_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(x) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
+                           bool X_in_Y = Y.find(x) != Y.end();
+                            if (X_in_incomingInfo && X_in_Y){
                                 //U{Ri -> Y | Rp -> X E in INTERSECTION X -> Y E in}
-                                locally_computed_reaching_info->mayPointTo_defs[instr_index] .insert(Y.begin(), Y.end() );
+                                locally_computed_reaching_info->mayPointTo_defs[instr_index] .insert(x);
+
                             }
 
                         }
+
 
                     }
 
@@ -381,8 +401,8 @@ where [src] is the index of the instruction that is the start of the edge,
 
                 //store
             else if (instr_opcode == 31) {
-                Instruction *value = I->getOperand(0);
-                Instruction *pointer = I->getPointerOperand();
+                Instruction *value = (Instruction *)I->getOperand(0);
+                Instruction *pointer = (Instruction *)((StoreInst *)I)->getPointerOperand();
 
                 const bool defined_val = InstrToIndex.find(value) != InstrToIndex.end();
                 const bool defined_pointer = InstrToIndex.find(pointer) != InstrToIndex.end();
@@ -399,7 +419,10 @@ where [src] is the index of the instruction that is the start of the edge,
                         std::set<unsigned> Y = incoming_mayPointTo_info->mayPointTo_defs[pointer_index];
                         for (auto y : Y){
                                 //U{Y -> X | Rv -> X E in INTERSECTION Rp -> Y E in}
-                                locally_computed_reaching_info->mayPointTo_defs[y] .insert(X.begin(), X.end() );
+                            bool y_in_X = X.find(y) != X.end();
+                            if (y_in_X) {
+                                locally_computed_reaching_info->mayPointTo_defs[y].insert(y);
+                            }
 
                         }
 
@@ -412,8 +435,8 @@ where [src] is the index of the instruction that is the start of the edge,
                 //select
             else if (instr_opcode == 55) {
                 //getOperand(0) == condition
-                Instruction *val1 = I->getOperand(1);
-                Instruction *val2 = I->getOperand(2);
+                Instruction *val1 = (Instruction *)I->getOperand(1);
+                Instruction *val2 = (Instruction *)I->getOperand(2);
 
                 const bool val1_defined_var = InstrToIndex.find(val1) != InstrToIndex.end();
 
@@ -453,7 +476,7 @@ where [src] is the index of the instruction that is the start of the edge,
                 Instruction *curr_instruction = I;
                 while (curr_instruction != nullptr && curr_instruction->getOpcode() == 53) {
                     for (int val= 0; val < curr_instruction->getNumOperands(); val++){
-                        Instruction *valK = curr_instruction->getOperand(val);
+                        Instruction *valK = (Instruction *)curr_instruction->getOperand(val);
                         const bool valK_defined_var = InstrToIndex.find(valK) != InstrToIndex.end();
                         if (valK_defined_var){
                             unsigned int valK_index = InstrToIndex[valK];

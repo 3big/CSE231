@@ -75,13 +75,13 @@ namespace llvm{
 
         }
     };
-    bool isForwardDirection = false;//is backward
-    class MayPointToAnalysis : public DataFlowAnalysis<LivenessInfo, isForwardDirection> {
+    const bool isForwardDirection = false;//is backward
+    class LivenessAnalysis : public DataFlowAnalysis<LivenessInfo, isForwardDirection> {
     private:
         typedef std::pair<unsigned, unsigned> Edge;
 
     public:
-        MayPointToAnalysis(LivenessInfo &bottom, LivenessInfo &initialState) :
+        LivenessAnalysis(LivenessInfo &bottom, LivenessInfo &initialState) :
                 DataFlowAnalysis<LivenessInfo, isForwardDirection>::DataFlowAnalysis(bottom, initialState) {}
 
 
@@ -303,7 +303,7 @@ namespace llvm{
                         Instruction *out_instr = IndexToInstr[out_instr_index];
 
                         //label_ij
-                        for (auto op = curr_instruction->operands().begin(), end = curr_instruction->operands().end(); op !=end; ++op){
+                        for (Instruction *op = (Instruction *)curr_instruction->operands().begin(), *end = (Instruction *)curr_instruction->operands().end(); op !=end; ++op){
 
                             const bool defined_var = InstrToIndex.find(op) !=InstrToIndex.end();
                             const bool same_building_block = out_instr->getParent() == op->getParent();
@@ -352,8 +352,8 @@ namespace llvm{
 //        errs() << "Return Result" <<"\n";
 
                 //U operands
-                for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
-                    const bool defined_var = InstrToIndex.find(instr_index) !=InstrToIndex.end();
+                for (Instruction *op = (Instruction *)I->operands().begin(), *end = (Instruction *)I->operands().end(); op !=end; ++op){
+                    const bool defined_var = InstrToIndex.find(op) !=InstrToIndex.end();
                     if (defined_var){
                         locally_computed_liveness_info->liveness_defs.insert(InstrToIndex[op]);
                     }
@@ -384,8 +384,8 @@ namespace llvm{
 //        errs() << "NO Result" << "\n";
 
                 //U operands
-                for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
-                    const bool defined_var = InstrToIndex.find(instr_index) !=InstrToIndex.end();
+                for (Instruction *op = (Instruction *)I->operands().begin(), *end = (Instruction *)I->operands().end(); op !=end; ++op){
+                    const bool defined_var = InstrToIndex.find(op) !=InstrToIndex.end();
                     if (defined_var){
                         locally_computed_liveness_info->liveness_defs.insert(InstrToIndex[op]);
                     }
@@ -418,15 +418,15 @@ namespace llvm{
 
 
     namespace {
-        struct MayPointToAnalysisPass : public FunctionPass {
+        struct LivenessAnalysisPass : public FunctionPass {
             static char ID;
 
-            MayPointToAnalysisPass() : FunctionPass(ID) {}
+            LivenessAnalysisPass() : FunctionPass(ID) {}
 
             bool runOnFunction(Function &F) override {
                 LivenessInfo bottom;
                 LivenessInfo initial_state;
-                MayPointToAnalysis  analysis (bottom, initial_state);//
+                LivenessAnalysis  analysis (bottom, initial_state);//
                 analysis.runWorklistAlgorithm(&F);
                 analysis.print();
                 return false;
@@ -434,8 +434,8 @@ namespace llvm{
         }; // end of struct TestPass
     }  // end of anonymous namespace
 
-    char MayPointToAnalysisPass::ID = 0;
-    static RegisterPass<MayPointToAnalysisPass> X("cse231-liveness", "Developed to determine liveness of IR instructions",
+    char LivenessAnalysisPass::ID = 0;
+    static RegisterPass<LivenessAnalysisPass> X("cse231-liveness", "Developed to determine liveness of IR instructions",
                                                           false /* Only looks at CFG */,
                                                           false /* Analysis Pass */);
 

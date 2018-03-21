@@ -225,10 +225,12 @@ class DataFlowAnalysis {
 			assignIndiceToInstrs(func);
 
 			//iterate in reverse
-			for (Function::iterator bi = func->rbegin(), e = func->rend(); bi != e; ++bi) {
-				BasicBlock * block = &*bi;
+			for (auto bi = func->getBasicBlockList().rbegin(), e = func->getBasicBlockList().rend(); bi != e; ++bi) {
+//				BasicBlock * block = &*bi;
+        BasicBlock * block = &*bi;
 
-				Instruction * firstInstr = &(block->front());
+
+        Instruction * firstInstr = &(block->front());
 
 				// Initialize incoming edges to the basic block, reversed
 				for (auto pi = pred_begin(block), pe = pred_end(block); pi != pe; ++pi) {
