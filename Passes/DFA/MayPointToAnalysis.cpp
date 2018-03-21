@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <map>
 #include <set>
+#include <string>
 
 namespace llvm{
 
@@ -19,7 +20,7 @@ namespace llvm{
 
         ~MayPointToInfo() = default;
 
-        std::set<unsigned> liveness_defs ={};
+        std::map<unsigned, std::set<unsigned >> mayPointTo_defs ={};//Edge[space][src]->Edge[space][dst]: (printed by DataFlowAnalysis) point-to-i -> ij / ik/  ...., | point-to-i' ->
 
         /*
          * Print out the information
@@ -31,9 +32,29 @@ namespace llvm{
 //      Edge[space][src]->Edge[space][dst]: (printed by DataFlowAnalysis)
 
 
-//          [def 1]|[def 2]| ... [def K]|\n
-            for (auto def: liveness_defs) {
-                errs() << def << "|";
+            /*Edge[space][src]->Edge[space][dst]:
+             *
+             * [point-to 1]|[point-to 2]| ... [point-to K]|\n
+             *
+where [src] is the index of the instruction that is the start of the edge,
+             [dst] is the index of the instruction that is the end of the edge.
+
+             [point-to i] represents what the ith pointer may point to at this moment, and it should be in the following form:
+[pointer's DFA ID]->([pointee 1's DFA ID][slash][pointee 2's DFA ID][slash] ... [pointee m's DFA ID][slash])*/
+
+            for(auto pointer = mayPointTo_defs.begin(), end = mayPointTo_defs.end(); pointer != end; pointer++ ) {
+                unsigned int pointerID = pointer->first;
+                char pointer_prefix = 'R';
+                errs() << pointer_prefix << pointerID << "->(";
+                for (auto pointeeID: pointer->second) {
+                    char pointee_prefix = pointer_prefix;
+                    if (pointeeID == pointerID){//alloca
+                        pointee_prefix = 'M';
+                    }
+                    errs() << pointee_prefix << pointeeID << "[slash]";
+                }
+                errs() << ")|";
+
             }
             errs() << "\n";
         }
@@ -46,12 +67,37 @@ namespace llvm{
          */
         static bool equals(MayPointToInfo *info1, MayPointToInfo *info2) {
 //      errs() << "rd equals" <<"\n\n";
+            for(auto info1_ptr = info1->mayPointTo_defs.begin(), info1_end = info1->mayPointTo_defs.end(); info1_ptr != info1_end; info1_ptr++ ) {
 
-            bool is_equal = info1->liveness_defs == info2->liveness_defs;
+                unsigned int info1_pointerID = info1_ptr->first;
+                bool pointer_1_in_info2 =  info2->mayPointTo_defs.find(info1_pointerID) != info2->mayPointTo_defs.end();
+                if (!pointer_1_in_info2){
+                    return false;
+                }
+            }
+
+            //compare against values in info2_ptr
+            for(auto info2_ptr = info2->mayPointTo_defs.begin(), info2_end = info2->mayPointTo_defs.end(); info2_ptr != info2_end; info2_ptr++ ) {
+
+                unsigned int info2_pointerID = info2_ptr->first;
+                bool pointer_2_in_info1 =  info1->mayPointTo_defs.find(info2_pointerID) != info1->mayPointTo_defs.end();
+                if (!pointer_2_in_info1){
+                    return false;
+                }
+            }
+
+            for(auto info1_ptr = info1->mayPointTo_defs.begin(), info1_end = info1->mayPointTo_defs.end(); info1_ptr != info1_end; info1_ptr++ ) {
+
+                unsigned int info1_pointerID = info1_ptr->first;
+                bool is_equal = info1_ptr->second == info2->mayPointTo_defs[info1_pointerID];
+                if (!is_equal){
+                    return false;
+                }
+            }
 //      errs() << is_equal <<"\n\n";
 
 
-            return is_equal;
+            return true;
         }
 
         /*
@@ -66,8 +112,13 @@ namespace llvm{
             MayPointToInfo *info_in[2] = {info1, info2};
             for (auto curr_info : info_in) {
                 if (!equals(curr_info, result)) {//since we sometimes join result with something else and put it back in result
-                    for (unsigned reaching_def : curr_info->liveness_defs) {
-                        result->liveness_defs.insert(reaching_def);
+                    for(auto info_ptr = curr_info->mayPointTo_defs.begin(), info_end = info1->mayPointTo_defs.end(); info_ptr != info_end; info_ptr++ ) {
+                        unsigned int pointerID = info_ptr->first;
+                        result->mayPointTo_defs[pointerID].insert( info_ptr->second.begin(),  info_ptr->second.end());
+
+//                        for (unsigned mayPointToi: info_ptr->second){
+//                            result->mayPointTo_defs[pointerID].insert(mayPointToi);
+//                        }
                     }
                 }
             }
@@ -236,175 +287,216 @@ namespace llvm{
 
 /////////////////////*join incoming edges*/////////////////////////////
 
-            auto *incoming_reaching_info = new MayPointToInfo();
+            auto *incoming_mayPointTo_info = new MayPointToInfo();
             for (auto incoming_edge :IncomingEdges) {
                 Edge edge = Edge(incoming_edge, instr_index);
                 MayPointToInfo *curr_info = EdgeToInfo[edge];
-                MayPointToInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
+                MayPointToInfo::join(curr_info, incoming_mayPointTo_info, incoming_mayPointTo_info);
             }
 
             auto *locally_computed_reaching_info = new MayPointToInfo();
 //          errs()<<"Instruction " <<instr_opcode << ":\t"<<I->getOpcodeName() << "\n";
 //          errs() << "Incoming Edges #: "<<IncomingEdges.size() << "\n";
 
-////////////////////// 3 (phi)////////////////////////////////////////
 
-            if (instr_opcode == 53) {
+            /*The DFA identifier of a IR pointer is Ri where 
+ * i is the index of the defining IR instruction of this IR pointer (IR variable). 
+ * 
+ * The DFA identifier of a memory object is Mi where 
+ * i is the index of the IR instruction that allocates this memory object. For example, suppose that the following IR instruction's index is 10*/
+            //alloca
+            if (instr_opcode == 29) {
+                //U {Ri -> Mi}
+                locally_computed_reaching_info->mayPointTo_defs[instr_index].insert(instr_index);
+            }
 
-                //local copy of in[0] U... ... U in[k]
-                locally_computed_reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
+                //bitcast... to
+            else if (instr_opcode == 47) {
 
-//        errs() << "Phi Node" <<"\n";
+                Instruction *value = I->getOperand(0);
+                const bool defined_var = InstrToIndex.find(value) != InstrToIndex.end();
 
+                if (defined_var){
+                    unsigned  val_index = InstrToIndex[value];
+                    //Rv -> X E in
+                    const bool is_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(val_index) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
 
-                //-{result_i | i in [1..x]}
-                Instruction *curr_instruction = I;
-                while (curr_instruction != nullptr && curr_instruction->getOpcode() == 53) {
-//          errs() << "Phi Node: " <<InstrToIndex[curr_instruction] <<"\n";
+                    if (is_in_incomingInfo){
+                        //U {Ri->X | RV-> X E in}
+                        std::set<unsigned> X = incoming_mayPointTo_info->mayPointTo_defs[val_index];
+                        locally_computed_reaching_info->mayPointTo_defs[instr_index] .insert(X.begin(), X.end() );
+                    }
 
-                    //-result_i
-                    locally_computed_reaching_info->liveness_defs.erase(InstrToIndex[curr_instruction]);
-                    curr_instruction = curr_instruction->getNextNode();
                 }
-//            errs() << "Phi Nodes #: " << locally_computed_reaching_info->liveness_defs.size() <<"\n";
 
+            }
 
+                //getelementptr
+            else if (instr_opcode == 32) {
 
-                //out[k] = ...  U {ValuetoInstr_v_ij) | label k == label_ij}
-                for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
-                    //                        out[k]
-                    MayPointToInfo * liveness_info = new MayPointToInfo();
-                    liveness_info->liveness_defs = locally_computed_reaching_info->liveness_defs;
+                Instruction *ptrval = I->getPointerOperand();
+                const bool defined_var = InstrToIndex.find(ptrval) != InstrToIndex.end();
 
-                    curr_instruction = I;
-                    while (curr_instruction != nullptr && curr_instruction->getOpcode() == 53) {
+                if (defined_var){
+                    unsigned  ptrval_index = InstrToIndex[ptrval];
+                    //Rv -> X E in
+                    const bool RV_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(ptrval_index) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
 
-                        /*Here we include all incoming facts like before and
-                         * exclude variables defined at each phi instruction.
-                         *
-                         * In addition,
-                         * each outgoing set out[k] contains those phi variables v_ij that are defined in its matching basic block (labeled with label_k).
-                         *
-                         * The function ValueToInstr is merely used to extract the defining instruction from each phi value.*/
+                    if (RV_in_incomingInfo){
+                        //U {Ri->X | RV-> X E in}
+                        std::set<unsigned> X = incoming_mayPointTo_info->mayPointTo_defs[ptrval_index];
+                        locally_computed_reaching_info->mayPointTo_defs[instr_index] .insert(X.begin(), X.end() );
+                    }
 
-/*
-                         The pair [<v_11>, label_11], for example, guarantees that <v_11> comes from the block labeled with label_11.
+                }
 
-                        final reaching info
-                        U operands*/
-                        //label k
-                        unsigned int out_instr_index = OutgoingEdges[i];
-                        Instruction *out_instr = IndexToInstr[out_instr_index];
+            }
 
-                        //label_ij
-                        for (auto op = curr_instruction->operands().begin(), end = curr_instruction->operands().end(); op !=end; ++op){
-                            const bool defined_var = InstrToIndex.find(instr_index) !=InstrToIndex.end();
-                            const bool same_building_block = out_instr->getParent() == op->getParent();
+                //load
+            else if (instr_opcode == 30) {
+                Instruction *pointer = I->getPointerOperand();
+                const bool defined_var = InstrToIndex.find(pointer) != InstrToIndex.end();
 
-                            //U {ValuetoInstr_v_ij) | label k == label_ij}
-                            if (defined_var && same_building_block){
-                                liveness_info->liveness_defs.insert(InstrToIndex[op]);
+                if (defined_var){
+                    unsigned  pointer_index = InstrToIndex[pointer];
+                    //Rp -> X E in
+                    const bool RP_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(pointer_index) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
+                    if (RP_in_incomingInfo){
+                        std::set<unsigned> X = incoming_mayPointTo_info->mayPointTo_defs[pointer_index];
+                        for (auto x : X){
+                            //X -> Y E in
+                            bool X_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(x) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
+                            if (X_in_incomingInfo){
+                                std::set<unsigned> Y = incoming_mayPointTo_info->mayPointTo_defs[x];
+                                //U{Ri -> Y | Rp -> X E in INTERSECTION X -> Y E in}
+                                locally_computed_reaching_info->mayPointTo_defs[instr_index] .insert(Y.begin(), Y.end() );
                             }
 
-                        }//end for
-                        curr_instruction = curr_instruction->getNextNode();
+                        }
 
-//        incoming_reaching_info->print();
-                    }//end while
-                    Infos.push_back(liveness_info);
-                }//end for
-
-
-            }
-
-
-
-
-
-//////////////////////1 (returns result)///////////////////////////////
-
-                /*... U operands - {index } where
-                 * operands is the set of variables used (and therefore needed to be live) in the body of the instruction,
-                 * index is the index of the IR instruction, which corresponds to the variable <result> being defined.
-                 *
-                 * For example, in the instruction
-                 *
-                 * %result = add i32 4,  %var
-                 *
-                 * operands would be the singleton set { I%var },
-                 * where I%var is the index of the instruction that defines %var.*/
-
-            else if ((11 <= instr_opcode && instr_opcode <= 30) //{bin}, {bitwise}, alloc, load
-                     | (instr_opcode == 32) //getelementptr
-                     | (51 <= instr_opcode && instr_opcode <= 52) //icmp, fcmp
-                     | (instr_opcode == 55) //select
-                    ) {
-
-
-
-//        errs() << "Return Result" <<"\n";
-
-                //U operands
-                for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
-                    const bool defined_var = InstrToIndex.find(instr_index) !=InstrToIndex.end();
-                    if (defined_var){
-                        locally_computed_reaching_info->liveness_defs.insert(InstrToIndex[op]);
                     }
+
                 }
-                //-{index}
-                locally_computed_reaching_info->liveness_defs.erase(instr_index);//single instruction
-
-                //final reaching info
-                MayPointToInfo::join(locally_computed_reaching_info, incoming_reaching_info, incoming_reaching_info);
-//      errs() << "assigning new infos" <<"\n";
-
-                //set new outgoing infos; each outgoing edge has the same info
-                for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
-                    MayPointToInfo * reaching_info = new MayPointToInfo();
-                    reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
-//        incoming_reaching_info->print();
-                    Infos.push_back(reaching_info);
-                }
-
-//      errs() << "assigned infos"<<"\n";
-//          errs() << "info out size: "<< Infos.size() <<"\n";
             }
 
+                //store
+            else if (instr_opcode == 31) {
+                Instruction *value = I->getOperand(0);
+                Instruction *pointer = I->getPointerOperand();
 
-//////////////// 2 (non-returning values or non-specified)///////////////////
-/*... U operands*/
-            else {
-//        errs() << "NO Result" << "\n";
+                const bool defined_val = InstrToIndex.find(value) != InstrToIndex.end();
+                const bool defined_pointer = InstrToIndex.find(pointer) != InstrToIndex.end();
 
-                //U operands
-                for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
-                    const bool defined_var = InstrToIndex.find(instr_index) !=InstrToIndex.end();
-                    if (defined_var){
-                        locally_computed_reaching_info->liveness_defs.insert(InstrToIndex[op]);
+                if (defined_val && defined_pointer){
+                    unsigned  pointer_index = InstrToIndex[pointer];
+                    unsigned value_index = InstrToIndex[value];
+                    //Rv -> X E in INTERSECTION Rp -> Y E in
+                    const bool Rp_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(pointer_index) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
+                    const bool Rv_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(value_index) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
+
+                    if (Rp_in_incomingInfo && Rv_in_incomingInfo){
+                        std::set<unsigned> X = incoming_mayPointTo_info->mayPointTo_defs[value_index];
+                        std::set<unsigned> Y = incoming_mayPointTo_info->mayPointTo_defs[pointer_index];
+                        for (auto y : Y){
+                                //U{Y -> X | Rv -> X E in INTERSECTION Rp -> Y E in}
+                                locally_computed_reaching_info->mayPointTo_defs[y] .insert(X.begin(), X.end() );
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+                //select
+            else if (instr_opcode == 55) {
+                //getOperand(0) == condition
+                Instruction *val1 = I->getOperand(1);
+                Instruction *val2 = I->getOperand(2);
+
+                const bool val1_defined_var = InstrToIndex.find(val1) != InstrToIndex.end();
+
+                if (val1_defined_var){
+                    unsigned  val1_index = InstrToIndex[val1];
+
+                    //R1 -> X E in
+                    const bool val1_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(val1_index) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
+
+                    if (val1_in_incomingInfo){
+                        //U {Ri->X | R1-> X E in}
+                        std::set<unsigned> X = incoming_mayPointTo_info->mayPointTo_defs[val1_index];
+                        locally_computed_reaching_info->mayPointTo_defs[instr_index] .insert(X.begin(), X.end() );
+                    }
+
+
+                }
+
+                const bool val2_defined_var = InstrToIndex.find(val2) != InstrToIndex.end();
+                if (val2_defined_var){
+                    unsigned  val2_index = InstrToIndex[val2];
+                    //R2 -> X E in
+                    const bool val2_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(val2_index) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
+
+                    if (val2_in_incomingInfo) {
+                        //U {Ri->X | R2-> X E in}
+                        std::set<unsigned> X = incoming_mayPointTo_info->mayPointTo_defs[val2_index];
+                        locally_computed_reaching_info->mayPointTo_defs[instr_index] .insert(X.begin(), X.end() );
                     }
                 }
 
-                //final reaching info
-                MayPointToInfo::join(locally_computed_reaching_info, incoming_reaching_info, incoming_reaching_info);
+
+            }
+
+                //phi
+            else if (instr_opcode == 53) {
+                Instruction *curr_instruction = I;
+                while (curr_instruction != nullptr && curr_instruction->getOpcode() == 53) {
+                    for (int val= 0; val < curr_instruction->getNumOperands(); val++){
+                        Instruction *valK = curr_instruction->getOperand(val);
+                        const bool valK_defined_var = InstrToIndex.find(valK) != InstrToIndex.end();
+                        if (valK_defined_var){
+                            unsigned int valK_index = InstrToIndex[valK];
+                            const bool valK_in_incomingInfo = incoming_mayPointTo_info->mayPointTo_defs.find(valK_index) !=  incoming_mayPointTo_info->mayPointTo_defs.end();
+                            if (valK_in_incomingInfo){
+                                //U {Ri -> X | Rk -> X E in}
+                                std::set<unsigned> X = incoming_mayPointTo_info->mayPointTo_defs[valK_index];
+                                locally_computed_reaching_info->mayPointTo_defs[instr_index] .insert(X.begin(), X.end() );
+                            }
+                        }
+
+
+                    }
+
+                    curr_instruction = curr_instruction->getNextNode();
+
+//        incoming_reaching_info->print();
+                }//end while
+
+            }
+
+                //any other
+            else{
+                //out = in
+
+            }
+            //final reaching info
+            MayPointToInfo::join(locally_computed_reaching_info, incoming_mayPointTo_info, incoming_mayPointTo_info);
 //      errs() << "assigning new infos" <<"\n";
 
-                //set new outgoing infos; each outgoing edge has the same info
-                for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
-                    MayPointToInfo * reaching_info = new MayPointToInfo();
-                    reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
+            //set new outgoing infos; each outgoing edge has the same info
+            for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
+                MayPointToInfo * mayPointTo_info = new MayPointToInfo();
+                mayPointTo_info->mayPointTo_defs = incoming_mayPointTo_info->mayPointTo_defs;
 //        incoming_reaching_info->print();
-                    Infos.push_back(reaching_info);
-                }
+                Infos.push_back(mayPointTo_info);
+            }
 
 //      errs() << "assigned infos"<<"\n";
 //          errs() << "info out size: "<< Infos.size() <<"\n";
-            }
-
-//////////////////////////////////////////////////////////////////
 
             delete locally_computed_reaching_info;//dealloc
-            delete incoming_reaching_info;
-
+            delete incoming_mayPointTo_info;
         }
 
     };

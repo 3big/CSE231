@@ -11,13 +11,13 @@
 namespace llvm{
 
 
-class MayPointToInfo : public Info {
+class LivenessInfo : public Info {
 public:
-    MayPointToInfo() = default;
+    LivenessInfo() = default;
 
-    MayPointToInfo(const MayPointToInfo &other) = default;
+    LivenessInfo(const LivenessInfo &other) = default;
 
-    ~MayPointToInfo() = default;
+    ~LivenessInfo() = default;
 
     std::set<unsigned> liveness_defs ={};
 
@@ -44,7 +44,7 @@ public:
      * Direction:
      *   In your subclass you need to implement this function.
      */
-    static bool equals(MayPointToInfo *info1, MayPointToInfo *info2) {
+    static bool equals(LivenessInfo *info1, LivenessInfo *info2) {
 //      errs() << "rd equals" <<"\n\n";
 
       bool is_equal = info1->liveness_defs == info2->liveness_defs;
@@ -61,9 +61,9 @@ public:
      * Direction:
      *   In your subclass you need to implement this function.
      */
-    static void join(MayPointToInfo *info1, MayPointToInfo *info2, MayPointToInfo *result) {
+    static void join(LivenessInfo *info1, LivenessInfo *info2, LivenessInfo *result) {
       //union; since they are sets, just insert everything.
-      MayPointToInfo *info_in[2] = {info1, info2};
+      LivenessInfo *info_in[2] = {info1, info2};
       for (auto curr_info : info_in) {
         if (!equals(curr_info, result)) {//since we sometimes join result with something else and put it back in result
           for (unsigned reaching_def : curr_info->liveness_defs) {
@@ -76,13 +76,13 @@ public:
     }
 };
 
-class MayPointToAnalysis : public DataFlowAnalysis<MayPointToInfo, true> {
+class MayPointToAnalysis : public DataFlowAnalysis<LivenessInfo, true> {
 private:
     typedef std::pair<unsigned, unsigned> Edge;
 
 public:
-    MayPointToAnalysis(MayPointToInfo &bottom, MayPointToInfo &initialState) :
-            DataFlowAnalysis<MayPointToInfo, true>::DataFlowAnalysis(bottom, initialState) {}
+    MayPointToAnalysis(LivenessInfo &bottom, LivenessInfo &initialState) :
+            DataFlowAnalysis<LivenessInfo, true>::DataFlowAnalysis(bottom, initialState) {}
 
 
 
@@ -221,7 +221,7 @@ do not return a value (the second categories above).
       virtual void flowfunction(Instruction *I,
                       std::vector<unsigned> &IncomingEdges,
                       std::vector<unsigned> &OutgoingEdges,
-                      std::vector<MayPointToInfo *> &Infos) {
+                      std::vector<LivenessInfo *> &Infos) {
       if (I == nullptr)
         return;
 
@@ -234,15 +234,15 @@ do not return a value (the second categories above).
 //the first step of any flow function should be joining the incoming data flows.
 
       //join incoming edges
-      auto *incoming_reaching_info = new MayPointToInfo();
+      auto *incoming_reaching_info = new LivenessInfo();
 
       for (auto incoming_edge :IncomingEdges) {
         Edge edge = Edge(incoming_edge, instr_index);
-        MayPointToInfo *curr_info = EdgeToInfo[edge];
-        MayPointToInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
+        LivenessInfo *curr_info = EdgeToInfo[edge];
+        LivenessInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
       }
 
-      auto *locally_computed_reaching_info = new MayPointToInfo();
+      auto *locally_computed_reaching_info = new LivenessInfo();
 //          errs()<<"Instruction " <<instr_opcode << ":\t"<<I->getOpcodeName() << "\n";
 //          errs() << "Incoming Edges #: "<<IncomingEdges.size() << "\n";
 
@@ -258,7 +258,7 @@ do not return a value (the second categories above).
           locally_computed_reaching_info->liveness_defs.insert(InstrToIndex[curr_instruction]);
           curr_instruction = curr_instruction->getNextNode();//should do it?
         }
-//            errs() << "Phi Nodes #: " << locally_computed_reaching_info->liveness_defs.size() <<"\n";
+//            errs() << "Phi Nodes #: " << locally_computed_reaching_info->mayPointTo_defs.size() <<"\n";
 
 
       } else if ((11 <= instr_opcode && instr_opcode <= 30) //{bin}, {bitwise}, alloc, load
@@ -277,12 +277,12 @@ do not return a value (the second categories above).
       }
 
       //final reaching info
-      MayPointToInfo::join(locally_computed_reaching_info, incoming_reaching_info, incoming_reaching_info);
+      LivenessInfo::join(locally_computed_reaching_info, incoming_reaching_info, incoming_reaching_info);
 //      errs() << "assigning new infos" <<"\n";
 
       //set new outgoing infos; each outgoing edge has the same info
       for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
-        MayPointToInfo * reaching_info = new MayPointToInfo();
+        LivenessInfo * reaching_info = new LivenessInfo();
         reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
 //        incoming_reaching_info->print();
         Infos.push_back(reaching_info);
@@ -306,8 +306,8 @@ namespace {
         MayPointToAnalysisPass() : FunctionPass(ID) {}
 
         bool runOnFunction(Function &F) override {
-          MayPointToInfo bottom;
-          MayPointToInfo initial_state;
+          LivenessInfo bottom;
+          LivenessInfo initial_state;
           MayPointToAnalysis  analysis (bottom, initial_state);//
           analysis.runWorklistAlgorithm(&F);
           analysis.print();

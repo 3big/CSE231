@@ -11,13 +11,13 @@
 namespace llvm{
 
 
-    class MayPointToInfo : public Info {
+    class LivenessInfo : public Info {
     public:
-        MayPointToInfo() = default;
+        LivenessInfo() = default;
 
-        MayPointToInfo(const MayPointToInfo &other) = default;
+        LivenessInfo(const LivenessInfo &other) = default;
 
-        ~MayPointToInfo() = default;
+        ~LivenessInfo() = default;
 
         std::set<unsigned> liveness_defs ={};
 
@@ -44,7 +44,7 @@ namespace llvm{
          * Direction:
          *   In your subclass you need to implement this function.
          */
-        static bool equals(MayPointToInfo *info1, MayPointToInfo *info2) {
+        static bool equals(LivenessInfo *info1, LivenessInfo *info2) {
 //      errs() << "rd equals" <<"\n\n";
 
             bool is_equal = info1->liveness_defs == info2->liveness_defs;
@@ -61,9 +61,9 @@ namespace llvm{
          * Direction:
          *   In your subclass you need to implement this function.
          */
-        static void join(MayPointToInfo *info1, MayPointToInfo *info2, MayPointToInfo *result) {
+        static void join(LivenessInfo *info1, LivenessInfo *info2, LivenessInfo *result) {
             //union; since they are sets, just insert everything.
-            MayPointToInfo *info_in[2] = {info1, info2};
+            LivenessInfo *info_in[2] = {info1, info2};
             for (auto curr_info : info_in) {
                 if (!equals(curr_info, result)) {//since we sometimes join result with something else and put it back in result
                     for (unsigned reaching_def : curr_info->liveness_defs) {
@@ -76,13 +76,13 @@ namespace llvm{
         }
     };
     bool isForwardDirection = false;//is backward
-    class MayPointToAnalysis : public DataFlowAnalysis<MayPointToInfo, isForwardDirection> {
+    class MayPointToAnalysis : public DataFlowAnalysis<LivenessInfo, isForwardDirection> {
     private:
         typedef std::pair<unsigned, unsigned> Edge;
 
     public:
-        MayPointToAnalysis(MayPointToInfo &bottom, MayPointToInfo &initialState) :
-                DataFlowAnalysis<MayPointToInfo, isForwardDirection>::DataFlowAnalysis(bottom, initialState) {}
+        MayPointToAnalysis(LivenessInfo &bottom, LivenessInfo &initialState) :
+                DataFlowAnalysis<LivenessInfo, isForwardDirection>::DataFlowAnalysis(bottom, initialState) {}
 
 
 
@@ -221,7 +221,7 @@ namespace llvm{
         virtual void flowfunction(Instruction *I,
                                   std::vector<unsigned> &IncomingEdges,
                                   std::vector<unsigned> &OutgoingEdges,
-                                  std::vector<MayPointToInfo *> &Infos) {
+                                  std::vector<LivenessInfo *> &Infos) {
             if (I == nullptr)
                 return;
 
@@ -236,23 +236,26 @@ namespace llvm{
 
 /////////////////////*join incoming edges*/////////////////////////////
 
-            auto *incoming_reaching_info = new MayPointToInfo();
+            auto *incoming_reaching_info = new LivenessInfo();
             for (auto incoming_edge :IncomingEdges) {
                 Edge edge = Edge(incoming_edge, instr_index);
-                MayPointToInfo *curr_info = EdgeToInfo[edge];
-                MayPointToInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
+                LivenessInfo *curr_info = EdgeToInfo[edge];
+                LivenessInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
             }
 
-            auto *locally_computed_reaching_info = new MayPointToInfo();
+            auto *locally_computed_liveness_info = new LivenessInfo();
 //          errs()<<"Instruction " <<instr_opcode << ":\t"<<I->getOpcodeName() << "\n";
 //          errs() << "Incoming Edges #: "<<IncomingEdges.size() << "\n";
+
+
+
 
 ////////////////////// 3 (phi)////////////////////////////////////////
 
             if (instr_opcode == 53) {
 
                 //local copy of in[0] U... ... U in[k]
-                locally_computed_reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
+                locally_computed_liveness_info->liveness_defs = incoming_reaching_info->liveness_defs;
 
 //        errs() << "Phi Node" <<"\n";
 
@@ -263,10 +266,10 @@ namespace llvm{
 //          errs() << "Phi Node: " <<InstrToIndex[curr_instruction] <<"\n";
 
                     //-result_i
-                    locally_computed_reaching_info->liveness_defs.erase(InstrToIndex[curr_instruction]);
+                    locally_computed_liveness_info->liveness_defs.erase(InstrToIndex[curr_instruction]);
                     curr_instruction = curr_instruction->getNextNode();
                 }
-//            errs() << "Phi Nodes #: " << locally_computed_reaching_info->liveness_defs.size() <<"\n";
+//            errs() << "Phi Nodes #: " << locally_computed_liveness_info->mayPointTo_defs.size() <<"\n";
 
 
                 //iterate again
@@ -276,8 +279,8 @@ namespace llvm{
 
                     for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
                         //                        out[k]
-                        MayPointToInfo * liveness_info = new MayPointToInfo();
-                        liveness_info->liveness_defs = locally_computed_reaching_info->liveness_defs;
+                        LivenessInfo * liveness_info = new LivenessInfo();
+                        liveness_info->liveness_defs = locally_computed_liveness_info->liveness_defs;
 
                         curr_instruction = I;
                         while (curr_instruction != nullptr && curr_instruction->getOpcode() == 53) {
@@ -302,7 +305,7 @@ namespace llvm{
                         //label_ij
                         for (auto op = curr_instruction->operands().begin(), end = curr_instruction->operands().end(); op !=end; ++op){
 
-                            const bool defined_var = InstrToIndex.find(instr_index) !=InstrToIndex.end();
+                            const bool defined_var = InstrToIndex.find(op) !=InstrToIndex.end();
                             const bool same_building_block = out_instr->getParent() == op->getParent();
 
                             //U {ValuetoInstr_v_ij) | label k == label_ij}
@@ -352,19 +355,19 @@ namespace llvm{
                 for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
                     const bool defined_var = InstrToIndex.find(instr_index) !=InstrToIndex.end();
                     if (defined_var){
-                        locally_computed_reaching_info->liveness_defs.insert(InstrToIndex[op]);
+                        locally_computed_liveness_info->liveness_defs.insert(InstrToIndex[op]);
                     }
                 }
                 //-{index}
-                locally_computed_reaching_info->liveness_defs.erase(instr_index);//single instruction
+                locally_computed_liveness_info->liveness_defs.erase(instr_index);//single instruction
 
                 //final reaching info
-                MayPointToInfo::join(locally_computed_reaching_info, incoming_reaching_info, incoming_reaching_info);
+                LivenessInfo::join(locally_computed_liveness_info, incoming_reaching_info, incoming_reaching_info);
 //      errs() << "assigning new infos" <<"\n";
 
                 //set new outgoing infos; each outgoing edge has the same info
                 for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
-                    MayPointToInfo * reaching_info = new MayPointToInfo();
+                    LivenessInfo * reaching_info = new LivenessInfo();
                     reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
 //        incoming_reaching_info->print();
                     Infos.push_back(reaching_info);
@@ -384,17 +387,17 @@ namespace llvm{
                 for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
                     const bool defined_var = InstrToIndex.find(instr_index) !=InstrToIndex.end();
                     if (defined_var){
-                        locally_computed_reaching_info->liveness_defs.insert(InstrToIndex[op]);
+                        locally_computed_liveness_info->liveness_defs.insert(InstrToIndex[op]);
                     }
                 }
 
                 //final reaching info
-                MayPointToInfo::join(locally_computed_reaching_info, incoming_reaching_info, incoming_reaching_info);
+                LivenessInfo::join(locally_computed_liveness_info, incoming_reaching_info, incoming_reaching_info);
 //      errs() << "assigning new infos" <<"\n";
 
                 //set new outgoing infos; each outgoing edge has the same info
                 for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
-                    MayPointToInfo * reaching_info = new MayPointToInfo();
+                    LivenessInfo * reaching_info = new LivenessInfo();
                     reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
 //        incoming_reaching_info->print();
                     Infos.push_back(reaching_info);
@@ -406,7 +409,7 @@ namespace llvm{
 
 //////////////////////////////////////////////////////////////////
 
-            delete locally_computed_reaching_info;//dealloc
+            delete locally_computed_liveness_info;//dealloc
             delete incoming_reaching_info;
 
         }
@@ -421,8 +424,8 @@ namespace llvm{
             MayPointToAnalysisPass() : FunctionPass(ID) {}
 
             bool runOnFunction(Function &F) override {
-                MayPointToInfo bottom;
-                MayPointToInfo initial_state;
+                LivenessInfo bottom;
+                LivenessInfo initial_state;
                 MayPointToAnalysis  analysis (bottom, initial_state);//
                 analysis.runWorklistAlgorithm(&F);
                 analysis.print();
