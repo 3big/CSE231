@@ -415,13 +415,21 @@ class DataFlowAnalysis {
 					bool hasTop = false;
 
 					//in case we have multiple returns
-					for(auto instr = EdgeToInfo.begin(), instr_last = EdgeToInfo.end(); instr != instr_last; ++instr) {
-						instr_index = instr->first.first;
-						if (instr_index == 0 || isa<UnreachableInst>(IndexToInstr[instr_index]) || isa<CleanupReturnInst>(IndexToInstr[instr_index]) ) {
-							nodes.push(instr_index);
-							hasTop = true;
-							entry_and_added[instr_index] = true;
-						}
+//					for(auto instr = EdgeToInfo.begin(), instr_last = EdgeToInfo.end(); instr != instr_last; ++instr) {
+//						instr_index = instr->first.first;
+//						if (instr_index == 0 || isa<UnreachableInst>(IndexToInstr[instr_index]) || isa<CleanupReturnInst>(IndexToInstr[instr_index]) ) {
+//							nodes.push(instr_index);
+//							hasTop = true;
+//							entry_and_added[instr_index] = true;
+//						}
+//					}
+
+					for (auto bi = func->begin(), e = func->end(); bi != e; ++bi) {
+						BasicBlock * block = &*bi;
+						instr_index = InstrToIndex[&(block->back())];
+						nodes.push(instr_index);
+						hasTop = true;
+						entry_and_added[instr_index] = true;
 					}
 
 					//in case there were no returns
