@@ -221,12 +221,12 @@ class DataFlowAnalysis {
 		 */
 		void initializeBackwardMap(Function * func) {
 
-			/*TODO: make this backwards*/
 			assignIndiceToInstrs(func);
 
 			//iterate in reverse
-			for (auto bi = func->getBasicBlockList().rbegin(), e = func->getBasicBlockList().rend(); bi != e; ++bi) {
-//				BasicBlock * block = &*bi;
+//      			for (auto bi = func->getBasicBlockList().rbegin(), e = func->getBasicBlockList().rend(); bi != e; ++bi) {
+
+      for (auto bi = func->begin(), e = func->end(); bi != e; ++bi) {
         BasicBlock * block = &*bi;
 
 
@@ -256,9 +256,15 @@ class DataFlowAnalysis {
 					Instruction * instr = &*ii;
 					if (isa<PHINode>(instr))
 						continue;
+					if (isa<ReturnInst>(instr)) {
+						addEdge(nullptr, instr, &Bottom);
+					}
 					if (instr == (Instruction *)block->getTerminator())
 						break;
-					Instruction * next = instr->getNextNode();
+          Instruction * next = instr->getNextNode();
+//          if (isa<ReturnInst>(next)) {
+//						addEdge(nullptr, next, &Bottom);
+//          }
 					//add next -> instr
 					addEdge(next, instr, &Bottom);
 				}
@@ -274,9 +280,27 @@ class DataFlowAnalysis {
 				}
 
 			}
+      auto IndexToInstr = getIndexToInstr();
+//      EntryInstr = IndexToInstr[EdgeToInfo.begin()->first.first];
+//      addEdge(nullptr, EntryInstr, &InitialState);
+
 
 			EntryInstr = (Instruction *) &((func->back()).back());
-			addEdge(nullptr, EntryInstr, &InitialState);
+//      addEdge(nullptr, EntryInstr, &InitialState);
+
+//      if(!isa<UnreachableInst>(EntryInstr)){
+//			  addEdge(nullptr, EntryInstr, &InitialState);
+//      }
+//      else{
+//        auto IndexToInstr = getIndexToInstr();
+//        for (auto const &it : EdgeToInfo) {
+//          if(!isa<UnreachableInst>(IndexToInstr[it.first.first])) {
+//            EntryInstr = IndexToInstr[it.first.first];
+//            break;
+//          }
+//        }
+//
+//      }
 
 			return;
 
@@ -371,19 +395,39 @@ class DataFlowAnalysis {
 
 					std::map<unsigned, bool > children_added;
 					std::map<unsigned, bool > visited;
+					std::map<unsigned, bool > entry_and_added;
+
 					std::stack<unsigned> nodes;
 
-      for(auto instr = IndexToInstr.begin(), instr_last = IndexToInstr.end(); instr != instr_last; ++instr){
+      for(auto instr = EdgeToInfo.begin(), instr_last = EdgeToInfo.end(); instr != instr_last; ++instr){
         //Worklist contains instrs in order of appearance (i.e. program order)
-				instr_index = instr->first;
+				instr_index = instr->first.first;
 //        errs()<<instr_index << " : " <<instr->second << "\n";
 
         children_added[instr_index] = false;
 				visited[instr_index] = false;
+				entry_and_added[instr_index] = false;
       }
 					/*Reverse Post-Order DFS*/
 					unsigned int curr_instr;
-					nodes.push(IndexToInstr.begin()->first);
+//					nodes.push(IndexToInstr.begin()->first);
+					unsigned int first_instr_index;
+					bool hasTop = false;
+
+					//in case we have multiple returns
+					for(auto instr = EdgeToInfo.begin(), instr_last = EdgeToInfo.end(); instr != instr_last; ++instr) {
+						instr_index = instr->first.first;
+						if (instr_index == 0 || isa<UnreachableInst>(IndexToInstr[instr_index]) || isa<CleanupReturnInst>(IndexToInstr[instr_index]) ) {
+							nodes.push(instr_index);
+							hasTop = true;
+							entry_and_added[instr_index] = true;
+						}
+					}
+
+					//in case there were no returns
+					if (!entry_and_added[InstrToIndex[EntryInstr]])
+						nodes.push(InstrToIndex[EntryInstr]);
+
 					visited[nodes.top()] = true;
 					while(!nodes.empty()){
 						curr_instr = nodes.top();

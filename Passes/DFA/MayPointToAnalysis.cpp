@@ -21,6 +21,7 @@ namespace llvm{
         ~MayPointToInfo() = default;
 
         std::map<unsigned, std::set<unsigned >> mayPointTo_defs ={};//Edge[space][src]->Edge[space][dst]: (printed by DataFlowAnalysis) point-to-i -> ij / ik/  ...., | point-to-i' ->
+        std::map<unsigned, bool> was_alloca;
 
         /*
          * Print out the information
@@ -41,6 +42,13 @@ where [src] is the index of the instruction that is the start of the edge,
 
              [point-to i] represents what the ith pointer may point to at this moment, and it should be in the following form:
 [pointer's DFA ID]->([pointee 1's DFA ID][slash][pointee 2's DFA ID][slash] ... [pointee m's DFA ID][slash])*/
+            for(auto pointer = mayPointTo_defs.begin(), end = mayPointTo_defs.end(); pointer != end; pointer++ ) {
+                unsigned int pointerID = pointer->first;
+                for (auto pointeeID: pointer->second) {
+                    was_alloca[pointerID] = pointeeID == pointerID;
+                }
+
+            }
 
             for(auto pointer = mayPointTo_defs.begin(), end = mayPointTo_defs.end(); pointer != end; pointer++ ) {
                 unsigned int pointerID = pointer->first;
@@ -48,8 +56,8 @@ where [src] is the index of the instruction that is the start of the edge,
                 errs() << pointer_prefix << pointerID << "->(";
                 for (auto pointeeID: pointer->second) {
                     char pointee_prefix = pointer_prefix;
-                    if (pointeeID == pointerID){//alloca
-                        pointee_prefix = 'M';
+                    if (was_alloca[pointeeID]){//alloca
+                        pointee_prefix = 'M';//should point to it's original location
                     }
                     errs() << pointee_prefix << pointeeID << "/";
                 }

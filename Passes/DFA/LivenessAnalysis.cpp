@@ -77,14 +77,61 @@ namespace llvm{
     };
     const bool isForwardDirection = false;//is backward
     class LivenessAnalysis : public DataFlowAnalysis<LivenessInfo, isForwardDirection> {
-    private:
-        typedef std::pair<unsigned, unsigned> Edge;
-
     public:
         LivenessAnalysis(LivenessInfo &bottom, LivenessInfo &initialState) :
                 DataFlowAnalysis<LivenessInfo, isForwardDirection>::DataFlowAnalysis(bottom, initialState) {}
+    private:
+        typedef std::pair<unsigned, unsigned> Edge;
+
+        static void join_operands(Instruction * I, LivenessInfo* infoToJoin, std::map<Instruction*, unsigned > InstrToIndex){
+            for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
+                Instruction * operand = (Instruction *)op->get();
+                const bool defined_var = InstrToIndex.find(operand) !=InstrToIndex.end();
+
+//                unsigned int op_index = InstrToIndex[ operand];
+//                if(isa<ReturnInst>(I))
+//                    errs()<< op_index <<"\n";
+
+                if (defined_var){
+                    unsigned int op_index = InstrToIndex[ operand];
+                    infoToJoin->liveness_defs.insert(op_index);
+                }
+            }
+        }
+        static void join_operands_same_block(Instruction * instr_w_ops, Instruction * instr_to_comp, LivenessInfo* infoToJoin, std::map<Instruction*, unsigned > InstrToIndex){
+
+            for (auto op = instr_w_ops->operands().begin(), end = instr_w_ops->operands().end(); op !=end; ++op){
+                Instruction * operand = (Instruction *)op->get();
+                const bool defined_var = InstrToIndex.find(operand) !=InstrToIndex.end();
+//                    errs()<< op_index <<"\n";
+                if (defined_var){
+
+//                    errs() << InstrToIndex[ instr_to_comp] <<"\n";
+//                    errs() << instr_to_comp->getParent()->getName() << "\n";
+//
+//                    errs() << InstrToIndex[ operand] <<"\n";
+//                    errs() << ((PHINode *)instr_w_ops)->getIncomingBlock(*op)->getName() << "\n\n";
 
 
+
+
+//                    bool same_building_block = instr_to_comp->getParent()->getName() == ((PHINode *)instr_w_ops)->getIncomingBlock(*op)->getName() ;
+                    bool same_building_block = instr_to_comp->getParent()== ((PHINode *)instr_w_ops)->getIncomingBlock(*op) ;
+
+                    if (same_building_block){
+//                        errs() << InstrToIndex[ instr_to_comp] <<"\n";
+//                        errs() << instr_to_comp->getParent()->getName() << "\n\n";
+//                        errs() << InstrToIndex[ operand] <<"\n";
+//                    errs() << ((PHINode *)instr_w_ops)->getIncomingBlock(*op)->getName() << "\n\n";
+//
+
+                        unsigned int op_index = InstrToIndex[ operand];
+                        infoToJoin->liveness_defs.insert(op_index);
+                    }
+
+                }
+            }
+        }
 
 /*When encountering a phi instruction,
  * the flow function should process the series of phi instructions together
@@ -240,6 +287,7 @@ namespace llvm{
             for (auto incoming_edge :IncomingEdges) {
                 Edge edge = Edge(incoming_edge, instr_index);
                 LivenessInfo *curr_info = EdgeToInfo[edge];
+//                curr_info->print();
                 LivenessInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
             }
 
@@ -256,31 +304,31 @@ namespace llvm{
 
                 //local copy of in[0] U... ... U in[k]
                 locally_computed_liveness_info->liveness_defs = incoming_reaching_info->liveness_defs;
-
+                LivenessInfo *phis_info  = new LivenessInfo();
 
 
                 //-{result_i | i in [1..x]}
-                Instruction *curr_instruction = I;
-                while (curr_instruction != nullptr && curr_instruction->getOpcode() == 53) {
-
+                Instruction *curr_phi = I;
+                while (curr_phi != nullptr && curr_phi->getOpcode() == 53) {
                     //-result_i
-                    locally_computed_liveness_info->liveness_defs.erase(InstrToIndex[curr_instruction]);
-                    curr_instruction = curr_instruction->getNextNode();
+                    unsigned int curr_phi_index = InstrToIndex[curr_phi];
+                    locally_computed_liveness_info->liveness_defs.erase(curr_phi_index);
+                    phis_info->liveness_defs.insert(curr_phi_index);
+                    curr_phi = curr_phi->getNextNode();
                 }
 
-
-                //iterate again
-
-
                 //out[k] = ...  U {ValuetoInstr_v_ij) | label k == label_ij}
-
                     for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
-                        //                        out[k]
+                        //out[k]
                         LivenessInfo * liveness_info = new LivenessInfo();
                         liveness_info->liveness_defs = locally_computed_liveness_info->liveness_defs;
 
-                        curr_instruction = I;
-                        while (curr_instruction != nullptr && curr_instruction->getOpcode() == 53) {
+                        //label k
+                        unsigned int out_instr_index = OutgoingEdges[i];
+                        Instruction *out_instr = IndexToInstr[out_instr_index];
+
+                        curr_phi = I;
+                        while (curr_phi != nullptr && curr_phi->getOpcode() == 53) {
 
                             /*Here we include all incoming facts like before and
                              * exclude variables defined at each phi instruction.
@@ -292,28 +340,12 @@ namespace llvm{
 
 /*
                          The pair [<v_11>, label_11], for example, guarantees that <v_11> comes from the block labeled with label_11.
-
-                        final reaching info
-                        U operands*/
-                        //label k
-                        unsigned int out_instr_index = OutgoingEdges[i];
-                        Instruction *out_instr = IndexToInstr[out_instr_index];
-
+*/
                         //label_ij
-                        for (auto op = curr_instruction->operands().begin(), end = curr_instruction->operands().end(); op !=end; ++op){
+                        join_operands_same_block(curr_phi, out_instr, liveness_info, InstrToIndex);
 
-                            const bool defined_var = InstrToIndex.find((Instruction *)op) !=InstrToIndex.end();
-                            const bool same_building_block = out_instr->getParent() == ((Instruction *)op)->getParent();
+                        curr_phi = curr_phi->getNextNode();
 
-                            //U {ValuetoInstr_v_ij) | label k == label_ij}
-                            if (defined_var && same_building_block){
-                                liveness_info->liveness_defs.insert(InstrToIndex[(Instruction *)op]);
-                            }
-
-                        }//end for
-                        curr_instruction = curr_instruction->getNextNode();
-
-//        incoming_reaching_info->print();
                     }//end while
                         Infos.push_back(liveness_info);
                     }//end for
@@ -345,63 +377,42 @@ namespace llvm{
                     ) {
 
 
-
-//        errs() << "Return Result" <<"\n";
-
                 //U operands
-                for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
-                    const bool defined_var = InstrToIndex.find((Instruction *)op) !=InstrToIndex.end();
-                    if (defined_var){
-                        locally_computed_liveness_info->liveness_defs.insert(InstrToIndex[ (Instruction *)op]);
-                    }
-                }
-                //-{index}
-                locally_computed_liveness_info->liveness_defs.erase(instr_index);//single instruction
+                join_operands(I, locally_computed_liveness_info, InstrToIndex);
+
 
                 //final reaching info
                 LivenessInfo::join(locally_computed_liveness_info, incoming_reaching_info, incoming_reaching_info);
-//      errs() << "assigning new infos" <<"\n";
+
+                //-{index}
+                incoming_reaching_info->liveness_defs.erase(instr_index);//single instruction
 
                 //set new outgoing infos; each outgoing edge has the same info
                 for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
                     LivenessInfo * reaching_info = new LivenessInfo();
                     reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
-//        incoming_reaching_info->print();
                     Infos.push_back(reaching_info);
                 }
 
-//      errs() << "assigned infos"<<"\n";
-//          errs() << "info out size: "<< Infos.size() <<"\n";
             }
 
 
 //////////////// 2 (non-returning values or non-specified)///////////////////
 /*... U operands*/
             else {
-//        errs() << "NO Result" << "\n";
 
                 //U operands
-                for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
-                    const bool defined_var = InstrToIndex.find((Instruction *)op) !=InstrToIndex.end();
-                    if (defined_var){
-                        locally_computed_liveness_info->liveness_defs.insert(InstrToIndex[(Instruction *)op]);
-                    }
-                }
+                join_operands(I, locally_computed_liveness_info, InstrToIndex);
 
                 //final reaching info
                 LivenessInfo::join(locally_computed_liveness_info, incoming_reaching_info, incoming_reaching_info);
-//      errs() << "assigning new infos" <<"\n";
 
                 //set new outgoing infos; each outgoing edge has the same info
                 for (unsigned int i = 0; i < OutgoingEdges.size(); ++i) {
                     LivenessInfo * reaching_info = new LivenessInfo();
                     reaching_info->liveness_defs = incoming_reaching_info->liveness_defs;
-//        incoming_reaching_info->print();
                     Infos.push_back(reaching_info);
                 }
-
-//      errs() << "assigned infos"<<"\n";
-//          errs() << "info out size: "<< Infos.size() <<"\n";
             }
 
 //////////////////////////////////////////////////////////////////
