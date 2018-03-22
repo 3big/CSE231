@@ -423,18 +423,21 @@ class DataFlowAnalysis {
 //							entry_and_added[instr_index] = true;
 //						}
 //					}
-
-					for (auto bi = func->begin(), e = func->end(); bi != e; ++bi) {
-						BasicBlock * block = &*bi;
-						instr_index = InstrToIndex[&(block->back())];
-						nodes.push(instr_index);
-						hasTop = true;
-						entry_and_added[instr_index] = true;
+					if (!Direction) {//backwards analysis
+						for (auto bi = func->begin(), e = func->end(); bi != e; ++bi) {
+							BasicBlock *block = &*bi;
+							instr_index = InstrToIndex[&(block->back())];
+							nodes.push(instr_index);
+							hasTop = true;
+							entry_and_added[instr_index] = true;
+						}
+					} else{
+						nodes.push(InstrToIndex[EntryInstr]);
 					}
 
-					//in case there were no returns
-					if (!entry_and_added[InstrToIndex[EntryInstr]])
-						nodes.push(InstrToIndex[EntryInstr]);
+//					//in case there were no returns
+//					if (!entry_and_added[InstrToIndex[EntryInstr]])
+//						nodes.push(InstrToIndex[EntryInstr]);
 
 					visited[nodes.top()] = true;
 					while(!nodes.empty()){
