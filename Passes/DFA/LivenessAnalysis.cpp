@@ -1,4 +1,4 @@
-//#define NDEBUG
+#define NDEBUG
 
 #include "231DFA.h"
 #include "llvm/Pass.h"
@@ -45,10 +45,10 @@ namespace llvm{
          *   In your subclass you need to implement this function.
          */
         static bool equals(LivenessInfo *info1, LivenessInfo *info2) {
-//      errs() << "rd equals" <<"\n\n";
+
 
             bool is_equal = info1->liveness_defs == info2->liveness_defs;
-//      errs() << is_equal <<"\n\n";
+
 
 
             return is_equal;
@@ -87,11 +87,6 @@ namespace llvm{
             for (auto op = I->operands().begin(), end = I->operands().end(); op !=end; ++op){
                 Instruction * operand = (Instruction *)op->get();
                 const bool defined_var = InstrToIndex.find(operand) !=InstrToIndex.end();
-
-//                unsigned int op_index = InstrToIndex[ operand];
-//                if(isa<ReturnInst>(I))
-//                    errs()<< op_index <<"\n";
-
                 if (defined_var){
                     unsigned int op_index = InstrToIndex[ operand];
                     infoToJoin->liveness_defs.insert(op_index);
@@ -99,40 +94,18 @@ namespace llvm{
             }
         }
         static void join_operands_same_block(Instruction * instr_w_ops, Instruction * instr_to_comp, LivenessInfo* infoToJoin, std::map<Instruction*, unsigned > InstrToIndex){
-
             for (auto op = instr_w_ops->operands().begin(), end = instr_w_ops->operands().end(); op !=end; ++op){
                 Instruction * operand = (Instruction *)op->get();
                 const bool defined_var = InstrToIndex.find(operand) !=InstrToIndex.end();
-//                    errs()<< op_index <<"\n";
                 if (defined_var){
-
-//                    errs() << InstrToIndex[ instr_to_comp] <<"\n";
-//                    errs() << instr_to_comp->getParent()->getName() << "\n";
-//
-//                    errs() << InstrToIndex[ operand] <<"\n";
-//                    errs() << ((PHINode *)instr_w_ops)->getIncomingBlock(*op)->getName() << "\n\n";
-
-
-
-
-//                    bool same_building_block = instr_to_comp->getParent()->getName() == ((PHINode *)instr_w_ops)->getIncomingBlock(*op)->getName() ;
                     bool same_building_block = instr_to_comp->getParent()== ((PHINode *)instr_w_ops)->getIncomingBlock(*op) ;
-
                     if (same_building_block){
-//                        errs() << InstrToIndex[ instr_to_comp] <<"\n";
-//                        errs() << instr_to_comp->getParent()->getName() << "\n\n";
-//                        errs() << InstrToIndex[ operand] <<"\n";
-//                    errs() << ((PHINode *)instr_w_ops)->getIncomingBlock(*op)->getName() << "\n\n";
-//
-
                         unsigned int op_index = InstrToIndex[ operand];
                         infoToJoin->liveness_defs.insert(op_index);
                     }
-
                 }
             }
         }
-
 /*When encountering a phi instruction,
  * the flow function should process the series of phi instructions together
  * (effectively a PHI node from the lecture) rather than process each phi instruction individually.
@@ -177,74 +150,10 @@ namespace llvm{
 
     First Category: IR instructions that return a value (defines a variable):
                  All the instructions under binary operations;
-                 llvm::Instruction::isBinaryOp()
-                              ALL RETURN
-                          Binary Operations
-                          'add' Instruction 11
-                          'fadd' Instruction
-                          'sub' Instruction
-                          'fsub' Instruction
-                          'mul' Instruction
-                          'fmul' Instruction
-                          'udiv' Instruction
-                          'sdiv' Instruction
-                          'fdiv' Instruction
-                          'urem' Instruction
-                          'srem' Instruction
-                          'frem' Instruction22
-
-                                 if 11 <= instruction_index <=22: bin instruction_index
-
                   All the instructions under binary bitwise operations;
-                        Bitwise Binary Operations
-                                 ALL RETURN
-                          'shl' Instruction 23
-                          'lshr' Instruction
-                          'ashr' Instruction
-                          'and' Instruction
-                          'or' Instruction
-                          'xor' Instruction 28
-
-                                  if 23 <= instruction_index <= 28: bitwise instruction_index (bin)
-
-                          alloca; 29 returning a pointer to alloced mem
-                          load; 30 returns loaded val
-                          getelementptr; 32 returns pointer to element
-
-                          icmp; 51 returns bool or vector of bools
-                          fcmp; 52 returns bool or vector of bools
-                          select. 55 returns the first value argument; otherwise, it returns the second value argument.
-                          =>
-
-                          if 11 <= instruction_index <=30 | instruction_index == 32 | 51<= instruction_index <= 52 | instruction_index == 55
-                            1st cat
 
     Second Category: IR instructions that do not return a value (+ misc)
-              br; 2 //4? NO RETURN
-              switch; 3 NO RETURN
-              store; 31 NO RETURN
-              => final else
-
     Third Category: phi instructions
-              phi; 53
-
-                if instruction_index == 53
-
-    =>
-         if (instruction_index == 53){
-              // 3 (phi)
-         } elif (11 <= instruction_index <=30 | instruction_index == 32 | 51<= instruction_index <= 52 | instruction_index == 55 ){
-              // 1 (return result)
-         } else{
-              // 2 (non-returning values or non-specified)
-         }
-    */
-        /*For the reaching definition analysis, you only need to consider the following IR instructions:
-
-
-
-
-
 
     Every instruction above falls into one of the three categories.
 
@@ -287,13 +196,13 @@ namespace llvm{
             for (auto incoming_edge :IncomingEdges) {
                 Edge edge = Edge(incoming_edge, instr_index);
                 LivenessInfo *curr_info = EdgeToInfo[edge];
-//                curr_info->print();
+
                 LivenessInfo::join(curr_info, incoming_reaching_info, incoming_reaching_info);
             }
 
             auto *locally_computed_liveness_info = new LivenessInfo();
-//          errs()<<"Instruction " <<instr_opcode << ":\t"<<I->getOpcodeName() << "\n";
-//          errs() << "Incoming Edges #: "<<IncomingEdges.size() << "\n";
+
+
 
 
 
@@ -330,32 +239,23 @@ namespace llvm{
                         curr_phi = I;
                         while (curr_phi != nullptr && curr_phi->getOpcode() == 53) {
 
-                            /*Here we include all incoming facts like before and
-                             * exclude variables defined at each phi instruction.
-                             *
-                             * In addition,
-                             * each outgoing set out[k] contains those phi variables v_ij that are defined in its matching basic block (labeled with label_k).
-                             *
-                             * The function ValueToInstr is merely used to extract the defining instruction from each phi value.*/
+                      /*Here we include all incoming facts like before and
+                       * exclude variables defined at each phi instruction.
+                       *
+                       * In addition,
+                       * each outgoing set out[k] contains those phi variables v_ij that are defined in its matching basic block (labeled with label_k).
+                       * .*/
 
 /*
                          The pair [<v_11>, label_11], for example, guarantees that <v_11> comes from the block labeled with label_11.
 */
                         //label_ij
                         join_operands_same_block(curr_phi, out_instr, liveness_info, InstrToIndex);
-
                         curr_phi = curr_phi->getNextNode();
-
                     }//end while
                         Infos.push_back(liveness_info);
                     }//end for
-
-
             }
-
-
-
-
 
 //////////////////////1 (returns result)///////////////////////////////
 
@@ -434,12 +334,12 @@ namespace llvm{
             bool runOnFunction(Function &F) override {
                 LivenessInfo bottom;
                 LivenessInfo initial_state;
-                LivenessAnalysis  analysis (bottom, initial_state);//
+                LivenessAnalysis  analysis (bottom, initial_state);
                 analysis.runWorklistAlgorithm(&F);
                 analysis.print();
                 return false;
             }
-        }; // end of struct TestPass
+        }; // end of struct LIvenessAnalysisPass
     }  // end of anonymous namespace
 
     char LivenessAnalysisPass::ID = 0;

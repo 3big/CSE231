@@ -10,7 +10,7 @@
 // This file provides the interface for the passes of CSE 231 projects
 //
 //===----------------------------------------------------------------------===//
-//#define NDEBUG
+#define NDEBUG
 #ifndef LLVM_TRANSFORMS_231DFA_H
 #define LLVM_TRANSFORMS_231DFA_H
 
@@ -280,30 +280,8 @@ class DataFlowAnalysis {
 				}
 
 			}
-      auto IndexToInstr = getIndexToInstr();
-//      EntryInstr = IndexToInstr[EdgeToInfo.begin()->first.first];
-//      addEdge(nullptr, EntryInstr, &InitialState);
-
-
 			EntryInstr = (Instruction *) &((func->back()).back());
-//      addEdge(nullptr, EntryInstr, &InitialState);
-
-//      if(!isa<UnreachableInst>(EntryInstr)){
-//			  addEdge(nullptr, EntryInstr, &InitialState);
-//      }
-//      else{
-//        auto IndexToInstr = getIndexToInstr();
-//        for (auto const &it : EdgeToInfo) {
-//          if(!isa<UnreachableInst>(IndexToInstr[it.first.first])) {
-//            EntryInstr = IndexToInstr[it.first.first];
-//            break;
-//          }
-//        }
-//
-//      }
-
 			return;
-
 		}
 
     /*
@@ -344,7 +322,6 @@ class DataFlowAnalysis {
     }
 
 
-//    EdgeToInfo, IndexToInstr, InstrToIndex, Bottom
 
 
     /*
@@ -378,7 +355,7 @@ class DataFlowAnalysis {
         void runWorklistAlgorithm(Function * func) {
 
           std::deque<unsigned> worklist;
-//          errs() << "wl";
+
 
 
 					// (1) Initialize info of each edge to bottom
@@ -402,7 +379,7 @@ class DataFlowAnalysis {
       for(auto instr = EdgeToInfo.begin(), instr_last = EdgeToInfo.end(); instr != instr_last; ++instr){
         //Worklist contains instrs in order of appearance (i.e. program order)
 				instr_index = instr->first.first;
-//        errs()<<instr_index << " : " <<instr->second << "\n";
+
 
         children_added[instr_index] = false;
 				visited[instr_index] = false;
@@ -410,20 +387,12 @@ class DataFlowAnalysis {
       }
 					/*Reverse Post-Order DFS*/
 					unsigned int curr_instr;
-//					nodes.push(IndexToInstr.begin()->first);
 					unsigned int first_instr_index;
 					bool hasTop = false;
 
-					//in case we have multiple returns
-//					for(auto instr = EdgeToInfo.begin(), instr_last = EdgeToInfo.end(); instr != instr_last; ++instr) {
-//						instr_index = instr->first.first;
-//						if (instr_index == 0 || isa<UnreachableInst>(IndexToInstr[instr_index]) || isa<CleanupReturnInst>(IndexToInstr[instr_index]) ) {
-//							nodes.push(instr_index);
-//							hasTop = true;
-//							entry_and_added[instr_index] = true;
-//						}
-//					}
+
 					if (!Direction) {//backwards analysis
+            //get all exit points of each basic block (i.e. multiple return statements)
 						for (auto bi = func->begin(), e = func->end(); bi != e; ++bi) {
 							BasicBlock *block = &*bi;
 							instr_index = InstrToIndex[&(block->back())];
@@ -435,31 +404,24 @@ class DataFlowAnalysis {
 						nodes.push(InstrToIndex[EntryInstr]);
 					}
 
-//					//in case there were no returns
-//					if (!entry_and_added[InstrToIndex[EntryInstr]])
-//						nodes.push(InstrToIndex[EntryInstr]);
-
 					visited[nodes.top()] = true;
 					while(!nodes.empty()){
 						curr_instr = nodes.top();
-//            errs()<< "Stack Instr: " <<curr_instr << "\n";
+
 
 
             if (!children_added[curr_instr]){
 							//Add children;
               std::vector<unsigned> outgoing_edges;
               getOutgoingEdges(curr_instr, &outgoing_edges);
-//              errs() << "outgoing edges # " << outgoing_edges.size() <<"\n\n";
-//              for (unsigned int i = 0; i < outgoing_edges.size(); ++i) {
-//                errs() << "Outgoing edge "<<i<<": " << outgoing_edges[i] <<"\n";
-//              }
+
 
 							//iterate over children in reverse so we get DFS
 							for(auto outgoing_instr = outgoing_edges.rbegin(); outgoing_instr != outgoing_edges.rend(); ++outgoing_instr) {
 								if (!visited[*outgoing_instr]){
 									visited[*outgoing_instr] = true;
 									nodes.push(*outgoing_instr);
-//                  errs() << *outgoing_instr << "|";
+
 								}
 							}
 							children_added[curr_instr] = true;
@@ -469,22 +431,18 @@ class DataFlowAnalysis {
 							 * */
 
 						} else{//add to worklist and remove
-//              errs() <<curr_instr << " added to WL\n";
+
 							worklist.push_front(curr_instr);//add it in reverse order
 							nodes.pop();
 						}
 					}
 
-//        for (auto it = worklist.begin(); it != worklist.end(); it++ ){
-//         errs() << "instr" << *it << "\n";
-//
-//        }
 
 
     	// (3) Compute until the work list is empty
 					while (!worklist.empty()){
 						curr_instr = worklist.front();
-//            errs() << "instr" << curr_instr << "\n";
+
 
             worklist.pop_front();
             if (curr_instr == 0 ){
@@ -497,15 +455,12 @@ class DataFlowAnalysis {
 						//info_out_OLD
 						getOutgoingEdges(curr_instr, &outgoing_edges);
 						//info_out
-//
-//            errs() << "Instruction #: "<< curr_instr <<"\n";
+
             std::vector<InfoT*> info_out;
 
             flowfunction(IndexToInstr[curr_instr], incoming_edges, outgoing_edges, info_out);
-//            errs() << "outgoing edges # " << outgoing_edges.size() <<"\n\n";
-//            for (unsigned int i = 0; i < outgoing_edges.size(); ++i) {
-//              errs() << "Outgoing edge "<<i<<": " << outgoing_edges[i] <<"\n";
-//            }
+
+
             for (unsigned int i = 0; i < outgoing_edges.size(); ++i) {
 
 
@@ -514,13 +469,6 @@ class DataFlowAnalysis {
               InfoT * new_info = info_out[i];
               assert(old_info != nullptr);
               assert(new_info != nullptr);
-//              errs() << "pr old info" <<"\n";
-//              old_info->print();
-//              errs() << "pr new info" <<"\n";
-//              new_info->print();
-
-
-
               if(!InfoT::equals(old_info, new_info)){
                 //update to new info, put back on worklist
                 EdgeToInfo[edge] = new_info;
